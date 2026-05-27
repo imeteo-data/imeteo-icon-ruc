@@ -28,19 +28,18 @@ jobs:
       - name: Install eccodes
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libeccodes-dev libeccodes-tools
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Install Python deps
-        run: pip install -r requirements.txt
+        run: uv sync --group dev
 
       - name: Fetch latest forecast run
-        run: python main.py --runs 1
+        run: uv run python main.py --runs 1
 
       - name: Trim old runs (keep newest 12 JSONs)
-        run: python cleanup.py --keep-last 12
+        run: uv run python cleanup.py --keep-last 12
 
       - name: Commit new forecasts if anything changed
         run: |

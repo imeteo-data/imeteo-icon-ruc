@@ -1,0 +1,24 @@
+[project]
+name = "imeteo-icon-ruc"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.21",
+    "xarray>=2022.3",
+    "scipy>=1.9",
+    "cfgrib>=0.9.10",
+    "netcdf4>=1.6",
+    "requests>=2.28",
+    "beautifulsoup4>=4.11",
+    "aiohttp>=3.8",
+    "certifi>=2023.0",
+    "flask>=2.0",
+    "flask-cors>=4.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=7.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

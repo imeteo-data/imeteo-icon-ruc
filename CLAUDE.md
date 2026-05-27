@@ -42,11 +42,10 @@ data/
 
 `extract_rs/` is a small pyo3 crate that decodes GRIB messages in parallel via rayon. On a typical run it is **~11× faster** than the pure-Python path (full 20-ensemble × 169-step run: ~13 s vs ~2:30). The Python path still exists as a fallback if the extension isn't built.
 
-Build and install into `.venv`:
+Build and install:
 
 ```bash
-.venv/bin/pip install maturin
-.venv/bin/maturin develop --release --manifest-path extract_rs/Cargo.toml
+uv run maturin develop --release --manifest-path extract_rs/Cargo.toml
 ```
 
 Requires a Rust toolchain (`rustup` + `cargo ≥1.70`) and the eccodes C library (same lib cfgrib uses; Homebrew: `brew install eccodes`). The extension reads eccodes' `shortName` key directly — so `config.VARIABLES[...]["grib_var"]` must match the GRIB shortName (e.g. `max_i10fg`, not the xarray cfVarName `fg10`).
@@ -54,18 +53,18 @@ Requires a Rust toolchain (`rustup` + `cargo ≥1.70`) and the eccodes C library
 ## Key commands
 
 ```bash
-.venv/bin/python main.py                              # latest run
-.venv/bin/python main.py --runs 3                     # 3 most recent runs
-.venv/bin/python main.py --run-id 2025-10-28T0700     # specific run
-.venv/bin/python main.py --run-id X --offline         # no network, use data/raw/ only
-.venv/bin/python main.py --list-local                 # list cached runs
+uv run python main.py                              # latest run
+uv run python main.py --runs 3                     # 3 most recent runs
+uv run python main.py --run-id 2025-10-28T0700     # specific run
+uv run python main.py --run-id X --offline         # no network, use data/raw/ only
+uv run python main.py --list-local                 # list cached runs
 
-.venv/bin/python api.py                               # start dashboard server
+uv run python api.py                               # start dashboard server
 
-.venv/bin/python cleanup.py --hours 12                # trim old GRIBs
-.venv/bin/python cleanup.py --hours 24 --dry-run
+uv run python cleanup.py --hours 12                # trim old GRIBs
+uv run python cleanup.py --hours 24 --dry-run
 
-.venv/bin/python -m pytest tests/
+uv run pytest tests/
 ```
 
 ## How the pipeline works
@@ -115,7 +114,7 @@ No new class, no adapter. The rest of the pipeline handles it.
 
 ## Dependencies
 
-Runtime: `xarray`, `cfgrib`, `netcdf4`, `numpy`, `scipy`, `requests`, `beautifulsoup4`, `aiohttp`, `certifi`, `flask`, `flask-cors`, `pytest`. See `requirements.txt`.
+Managed by uv via `pyproject.toml` and `uv.lock`. Install with `uv sync --group dev`.
 
 ## Notes
 
