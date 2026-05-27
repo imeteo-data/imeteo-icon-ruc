@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Ensemble precipitation and wind-gust forecasts for Bratislava, Slovakia (48.1486°N, 17.1077°E), from DWD's ICON-D2-RUC-EPS model. The pipeline downloads GRIB2 ensemble files, extracts the single grid cell nearest to Bratislava, computes percentiles and exceedance probabilities across ensemble members, and writes one JSON file per forecast run. A Flask API serves the JSON to a static HTML/uPlot dashboard.
+Ensemble precipitation and wind-gust forecasts for Bratislava, Slovakia (48.1629°N, 17.1369°E), from DWD's ICON-D2-RUC-EPS model. The pipeline downloads GRIB2 ensemble files, extracts the single grid cell nearest to Bratislava, computes percentiles and exceedance probabilities across ensemble members, and writes one JSON file per forecast run. A Flask API serves the JSON to a static HTML/uPlot dashboard.
 
 ## Data source
 
