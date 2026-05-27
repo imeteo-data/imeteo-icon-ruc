@@ -1,24 +1,24 @@
-name: Refresh forecast
+name: Forecast & Deploy
 
 on:
   schedule:
-    # DWD publishes the full RUC-EPS run ~30-40 min after the init hour.
-    # We fire at :45 UTC to pick up the latest fully-published run.
     - cron: "45 * * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
-  group: refresh-forecast
+  group: forecast-deploy
   cancel-in-progress: false
 
 jobs:
   choose-runner:
     uses: ./.github/workflows/choose-runner.yml
 
-  refresh:
+  forecast:
     needs: choose-runner
     runs-on: ${{ needs.choose-runner.outputs.runner }}
     timeout-minutes: 15
@@ -52,3 +52,26 @@ jobs:
             git commit -m "auto: refresh forecasts $(date -u +'%Y-%m-%dT%H:%MZ')"
             git push
           fi
+
+  deploy:
+    needs: forecast
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
