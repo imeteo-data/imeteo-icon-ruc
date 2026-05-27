@@ -15,8 +15,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  choose-runner:
+    uses: ./.github/workflows/choose-runner.yml
+
   refresh:
-    runs-on: [mac-mini-m2, ubuntu-latest]
+    needs: choose-runner
+    runs-on: ${{ needs.choose-runner.outputs.runner }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

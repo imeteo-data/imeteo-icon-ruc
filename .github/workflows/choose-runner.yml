@@ -1,0 +1,29 @@
+name: Choose Runner
+
+on:
+  workflow_call:
+    outputs:
+      runner:
+        description: "Runner label: self-hosted when mac-mini-m2 is online, ubuntu-latest otherwise"
+        value: ${{ jobs.pick.outputs.runner }}
+
+jobs:
+  pick:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.check.outputs.runner }}
+    steps:
+      - name: Check self-hosted runner availability
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(gh api repos/${{ github.repository }}/actions/runners \
+            --jq '.runners[] | select(.name=="mac-mini-m2") | .status' 2>/dev/null || echo "offline")
+          if [ "$status" = "online" ]; then
+            echo "runner=self-hosted" >> "$GITHUB_OUTPUT"
+            echo "Using self-hosted runner (mac-mini-m2 is online)"
+          else
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            echo "Falling back to ubuntu-latest (mac-mini-m2 is $status)"
+          fi
