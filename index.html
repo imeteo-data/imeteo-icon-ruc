@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ICON-D2-RUC-EPS · Bratislava</title>
+<title id="pageTitle">ICON-D2-RUC-EPS · Forecast</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -458,7 +458,7 @@ a:hover{text-decoration:underline}
         <span class="brand-dot" aria-hidden="true"></span>
         <span class="brand-eyebrow">ICON-D2-RUC-EPS · DWD ensemble</span>
       </div>
-      <div class="brand-title">Bratislava <span class="loc">48.15°N · 17.11°E</span></div>
+      <div class="brand-title"><span id="locationName">—</span> <span class="loc" id="locationCoords">—</span></div>
       <div class="brand-sub" id="brandSub"></div>
     </div>
     <div class="header-meta">
@@ -512,6 +512,23 @@ const fmtAge = (iso) => {
   const hrs = Math.floor(mins / 60);
   if (hrs < 48) return `updated ${hrs}h ago`;
   return `updated ${Math.floor(hrs/24)}d ago`;
+};
+
+const getLocationTimezone = (data) => {
+  // Try to extract timezone from data; fallback to guess based on coordinates
+  if (data.timezone) return data.timezone;
+  if (data.location && data.location.lon) {
+    // Simple fallback: use Europe/Bratislava for Central Europe, other timezones for other regions
+    // For now, default to UTC and let the location name guide the user
+    return 'UTC';
+  }
+  return 'UTC';
+};
+
+const formatCoords = (lat, lon) => {
+  const latStr = Math.abs(lat).toFixed(2) + (lat >= 0 ? '°N' : '°S');
+  const lonStr = Math.abs(lon).toFixed(2) + (lon >= 0 ? '°E' : '°W');
+  return `${latStr} · ${lonStr}`;
 };
 
 const VAR_META = {
@@ -1405,7 +1422,9 @@ function buildSummary(data){
 
   if (!parts.length) return null;
 
-  const h = new Date().toLocaleString('en-GB', {timeZone:'Europe/Bratislava', hour:'numeric', hour12:false});
+  // Use timezone from data if available; fallback to Europe/Bratislava for backwards compatibility
+  const tz = state.data?.timezone || 'Europe/Bratislava';
+  const h = new Date().toLocaleString('en-GB', {timeZone:tz, hour:'numeric', hour12:false});
   const hour = parseInt(h, 10);
   let greeting = '';
   if (hour >= 4 && hour < 11) greeting = 'Good morning. ';
@@ -1438,6 +1457,16 @@ async function loadRun(runId){
     }
     state.data = data;
     state.controls = {};
+
+    // Update location from data
+    if (data.location) {
+      const locName = data.location.name || 'Location';
+      const coords = formatCoords(data.location.lat, data.location.lon);
+      $('locationName').textContent = locName;
+      $('locationCoords').textContent = coords;
+      $('pageTitle').textContent = `ICON-D2-RUC-EPS · ${locName}`;
+    }
+
     $('brandSub').textContent = `nearest grid cell ${fmtNum(data.grid_distance_km, 2)} km from target`;
     $('age').textContent = fmtAge(data.generated_at);
     $('footerRight').textContent = `run ${fmtRunLabel(runId)} · generated ${data.generated_at}`;
