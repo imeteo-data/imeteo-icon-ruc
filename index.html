@@ -1294,7 +1294,7 @@ function drawEvolutionChart(varName, selectedRuns){
 
 // ── forecast summary (TTS-friendly) ────────────────────
 function buildSummary(data){
-  const tz = 'Europe/Bratislava';
+  const tz = data?.timezone || 'Europe/Bratislava';
   const fmtHour = (iso) => {
     const s = new Date(iso).toLocaleString('en-US', {
       timeZone:tz, hour:'numeric', hour12:true,
@@ -1422,8 +1422,6 @@ function buildSummary(data){
 
   if (!parts.length) return null;
 
-  // Use timezone from data if available; fallback to Europe/Bratislava for backwards compatibility
-  const tz = state.data?.timezone || 'Europe/Bratislava';
   const h = new Date().toLocaleString('en-GB', {timeZone:tz, hour:'numeric', hour12:false});
   const hour = parseInt(h, 10);
   let greeting = '';
