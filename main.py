@@ -18,6 +18,10 @@ def main() -> None:
                    help="List run_ids currently cached in data/raw/ and exit")
     p.add_argument("--offline", action="store_true",
                    help="Skip DWD discovery/downloads; use local files only")
+    p.add_argument("--backfill", action="store_true",
+                   help="Skip runs already complete locally; only (re)fetch missing "
+                        "or partially-uploaded runs. Use with --runs N to backfill a "
+                        "window of recent runs and recover hours the scheduler dropped")
     args = p.parse_args()
 
     if args.list_local:
@@ -35,7 +39,8 @@ def main() -> None:
         print("no runs to process")
         return
     print(f"processing runs: {run_ids}")
-    asyncio.run(run.process_runs(run_ids, offline=args.offline))
+    asyncio.run(run.process_runs(run_ids, offline=args.offline,
+                                 skip_complete=args.backfill))
 
 
 if __name__ == "__main__":

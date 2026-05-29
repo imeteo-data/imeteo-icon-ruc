@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -75,16 +76,44 @@ def list_remote_steps(variable: str, run_id: str, ensemble: str) -> list[str]:
     return _filter_by_step_minutes(steps, config.VARIABLES[variable]["step_minutes"])
 
 
+def _step_to_minutes(step: str) -> int | None:
+    """'PT003H15M' -> 195 lead-time minutes, or None if unparseable."""
+    m = re.match(r"PT(\d{3})H(\d{2})M", step)
+    if not m:
+        return None
+    return int(m.group(1)) * 60 + int(m.group(2))
+
+
 def _filter_by_step_minutes(steps: Iterable[str], step_minutes: int) -> list[str]:
     out = []
     for s in steps:
-        m = re.match(r"PT(\d{3})H(\d{2})M", s)
-        if not m:
+        total = _step_to_minutes(s)
+        if total is None:
             continue
-        total = int(m.group(1)) * 60 + int(m.group(2))
         if total % step_minutes == 0:
             out.append(s)
     return out
+
+
+def remote_run_horizon(variable: str, run_id: str) -> datetime | None:
+    """Latest valid-time DWD currently offers for `variable` at `run_id`.
+
+    Grows while DWD is still uploading a run, so callers compare it against a
+    cached run's last timestamp to detect runs captured mid-upload. Returns
+    None when the run/variable can't be listed (treated as "leave as-is").
+    """
+    try:
+        ensembles = list_remote_ensembles(variable, run_id)
+        if not ensembles:
+            return None
+        steps = list_remote_steps(variable, run_id, ensembles[0])
+    except requests.RequestException:
+        return None
+    minutes = [m for m in (_step_to_minutes(s) for s in steps) if m is not None]
+    if not minutes:
+        return None
+    base = datetime.strptime(run_id, "%Y-%m-%dT%H%M").replace(tzinfo=timezone.utc)
+    return base + timedelta(minutes=max(minutes))
 
 
 def scan_local_runs(raw_dir: Path | None = None) -> dict[str, dict[str, list[Path]]]:

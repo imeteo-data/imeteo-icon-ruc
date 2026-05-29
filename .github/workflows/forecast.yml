@@ -2,7 +2,10 @@ name: Forecast & Deploy
 
 on:
   schedule:
-    - cron: "45 * * * *"
+    # Every 15 min. GitHub delays/drops scheduled runs under load, so firing
+    # often + backfilling (below) keeps gaps small. A fire that finds nothing
+    # new is cheap: completeness checks only, no commit, no deploy.
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -21,7 +24,12 @@ jobs:
   forecast:
     needs: choose-runner
     runs-on: ${{ needs.choose-runner.outputs.runner }}
-    timeout-minutes: 15
+    # Higher than the old 15: a backfill after a long scheduler gap may process
+    # several runs. If it still overruns, the next fire continues where it left
+    # off (the work is self-healing), so this is just a safety net.
+    timeout-minutes: 30
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,26 +43,41 @@ jobs:
       - name: Install Python deps
         run: uv sync --group dev
 
-      - name: Fetch latest forecast run
-        run: uv run python main.py --runs 1
+      - name: Fetch & backfill recent runs
+        # Process the newest 12 runs but skip any already fully cached, so this
+        # recovers hours the scheduler dropped and re-fetches the still-uploading
+        # latest run, while normally doing only ~1 run's worth of work.
+        run: uv run python main.py --runs 12 --backfill
 
       - name: Trim old runs (keep newest 12 JSONs)
         run: uv run python cleanup.py --keep-last 12
 
-      - name: Commit new forecasts if anything changed
+      - name: Commit & push new forecasts if anything changed
+        id: commit
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/forecasts
           if git diff --cached --quiet; then
             echo "No forecast changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "auto: refresh forecasts $(date -u +'%Y-%m-%dT%H:%MZ')"
+          # Resilient to a previous fire having pushed while this one ran.
+          if git pull --rebase --autostash origin main && git push; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            git commit -m "auto: refresh forecasts $(date -u +'%Y-%m-%dT%H:%MZ')"
-            git push
+            echo "push failed (concurrent update?); next run will backfill"
+            git rebase --abort 2>/dev/null || true
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
   deploy:
     needs: forecast
+    # Only rebuild Pages when forecasts actually changed, so the frequent cron
+    # doesn't trigger a deploy on every fire.
+    if: needs.forecast.outputs.changed == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

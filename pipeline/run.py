@@ -8,6 +8,11 @@ from pathlib import Path
 
 from . import config, discover, download, extract, grid, stats
 
+# Variable used to judge whether a cached run is "fully uploaded". TOT_PREC is
+# the densest (15-min steps) and the last to finish publishing on DWD, so it is
+# a safe gate even if other variables lag or are absent.
+GATE_VARIABLE = "TOT_PREC"
+
 
 async def _download_run(variable: str, run_id: str, offline: bool) -> list[Path]:
     """Return the GRIB file paths for a variable+run, fetching missing ones if online."""
@@ -107,6 +112,39 @@ def _write_index() -> None:
                   f, separators=(",", ":"))
 
 
+def _local_run_horizon(run_id: str, variable: str = GATE_VARIABLE) -> datetime | None:
+    """Last valid-time stored in the cached JSON for `variable`, or None."""
+    path = config.FORECAST_DIR / f"{run_id}.json"
+    if not path.exists():
+        return None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    times = data.get("variables", {}).get(variable, {}).get("times", [])
+    if not times:
+        return None
+    return datetime.fromisoformat(times[-1].replace("Z", "+00:00"))
+
+
+def _is_run_complete(run_id: str) -> bool:
+    """True when the cached JSON already covers DWD's full horizon for this run.
+
+    A missing JSON, a missing gate variable, or a cached horizon shorter than
+    DWD currently offers (the run was captured mid-upload) all count as
+    incomplete and should be re-fetched. If DWD can't be listed we keep what we
+    have rather than re-fetching forever.
+    """
+    local = _local_run_horizon(run_id)
+    if local is None:
+        return False
+    remote = discover.remote_run_horizon(GATE_VARIABLE, run_id)
+    if remote is None:
+        return True
+    return local >= remote
+
+
 def resolve_runs(run_id: str | None = None, runs: int = 1,
                  offline: bool = False) -> list[str]:
     """Pick the runs to process based on CLI args."""
@@ -121,9 +159,19 @@ def resolve_runs(run_id: str | None = None, runs: int = 1,
         return discover.local_run_ids()[:runs]
 
 
-async def process_runs(run_ids: list[str], offline: bool = False) -> list[Path]:
+async def process_runs(run_ids: list[str], offline: bool = False,
+                       skip_complete: bool = False) -> list[Path]:
+    """Process each run; with skip_complete, skip runs already fully cached.
+
+    skip_complete makes backfill cheap and self-healing: missing hours (dropped
+    by the scheduler) and runs captured mid-upload get (re)fetched, while runs
+    already covering DWD's full horizon are left untouched.
+    """
     outputs = []
     for run_id in run_ids:
+        if skip_complete and not offline and _is_run_complete(run_id):
+            print(f"\n── run {run_id} ── already complete, skipping")
+            continue
         out = await process_run(run_id, offline=offline)
         if out:
             outputs.append(out)

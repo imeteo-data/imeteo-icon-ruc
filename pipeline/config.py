@@ -37,8 +37,11 @@ VARIABLES = {
 PERCENTILES = [10, 25, 50, 75, 90]
 
 # Retain only the newest N forecast JSONs in data/forecasts/. Older files
-# (and their GRIB inputs in data/raw/) are pruned after each run.
-FORECAST_RETAIN = 6
+# (and their GRIB inputs in data/raw/) are pruned after each run. This must
+# stay >= the backfill window the workflow requests (main.py --runs N --backfill)
+# and the cleanup --keep-last value, or backfilled runs get pruned and
+# re-downloaded next run. It also bounds how many runs the dashboard shows.
+FORECAST_RETAIN = 12
 
 DWD_BASE = "https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc-eps/p"
 GRID_URL = "https://opendata.dwd.de/weather/lib/cdo/icon_grid_0047_R19B07_L.nc.bz2"
