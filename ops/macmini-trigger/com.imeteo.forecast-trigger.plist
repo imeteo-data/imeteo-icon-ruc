@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent that dispatches the GitHub "Forecast & Deploy" workflow twice an
+  hour (:15 and :45) from the always-on Mac Mini. Reference copy; install.sh
+  rewrites the /Users/lubomirfranko paths to the current $HOME before loading.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.imeteo.forecast-trigger</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/lubomirfranko/bin/trigger-forecast.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Minute</key><integer>45</integer></dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/Users/lubomirfranko/Library/Logs/forecast-trigger.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/lubomirfranko/Library/Logs/forecast-trigger.err.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

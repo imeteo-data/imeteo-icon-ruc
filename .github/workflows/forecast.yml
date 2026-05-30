@@ -2,9 +2,13 @@ name: Forecast & Deploy
 
 on:
   schedule:
-    # Every 15 min. GitHub delays/drops scheduled runs under load, so firing
-    # often + backfilling (below) keeps gaps small. A fire that finds nothing
-    # new is cheap: completeness checks only, no commit, no deploy.
+    # FALLBACK trigger. The primary trigger is a Mac Mini LaunchAgent that
+    # dispatches this workflow at :15/:45 (see ops/macmini-trigger/). GitHub
+    # delays/drops scheduled runs under load (~8/day vs the 96 requested), so
+    # this cron alone is unreliable — but combined with backfilling (below) it
+    # keeps the pipeline complete if the Mini is ever down. Do not remove it.
+    # A fire that finds nothing new is cheap: completeness checks only, no
+    # commit, no deploy.
     - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
