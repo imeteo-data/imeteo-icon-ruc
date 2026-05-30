@@ -12,7 +12,7 @@ VARIABLES = {
     "TOT_PREC": {
         "grib_var": "tp",
         "is_accumulated": True,
-        "step_minutes": 15,
+        "step_minutes": 5,
         "unit": "mm/h",
         "thresholds": [0.1, 1.0, 5.0, 10.0],
     },
