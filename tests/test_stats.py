@@ -8,7 +8,8 @@ from pipeline import stats
 
 def _series(ens_id: str, starts: list[float]) -> list[tuple[np.datetime64, float]]:
     t0 = np.datetime64("2025-01-01T00:00:00")
-    return [(t0 + np.timedelta64(i * 15, "m"), v) for i, v in enumerate(starts)]
+    # 5-minute spacing matches TOT_PREC's native cadence (config.step_minutes).
+    return [(t0 + np.timedelta64(i * 5, "m"), v) for i, v in enumerate(starts)]
 
 
 def test_align_keeps_shared_timestamps_only():
@@ -53,18 +54,18 @@ def test_build_variable_output_instantaneous_var():
 
 
 def test_build_variable_output_accumulated_deaccumulated():
-    # Accumulated TOT_PREC in mm; 15-minute steps => rates in mm/h = diff * 4
+    # Accumulated TOT_PREC in mm; 5-minute steps => rates in mm/h = diff * 12
     series = {
         "01": _series("01", [0.0, 0.25, 0.5, 0.75]),
         "02": _series("02", [0.0, 0.0, 0.0, 1.0]),
     }
     out = stats.build_variable_output(series, "TOT_PREC")
-    # ensemble 01: rates [0, 1, 1, 1] mm/h; ensemble 02: [0, 0, 0, 4] mm/h
-    # At t3: values [1.0, 4.0], median=2.5
-    assert out["percentiles"]["p50"][3] == 2.5
-    # At t3: prob(>=1 mm/h) = 1.0 (both >= 1); prob(>=5) = 0.0
+    # ensemble 01: rates [0, 3, 3, 3] mm/h; ensemble 02: [0, 0, 0, 12] mm/h
+    # At t3: values [3.0, 12.0], median=7.5
+    assert out["percentiles"]["p50"][3] == 7.5
+    # At t3: prob(>=1 mm/h) = 1.0 (both >= 1); prob(>=5) = 0.5 (only 12 >= 5)
     assert out["probability_exceeds"]["1.0"][3] == 1.0
-    assert out["probability_exceeds"]["5.0"][3] == 0.0
+    assert out["probability_exceeds"]["5.0"][3] == 0.5
 
 
 def test_empty_input_returns_empty_shape():

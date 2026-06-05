@@ -40,10 +40,12 @@ def _read_point_python(path: Path, grib_var: str, cell_index: int
         value = float(arr.flat[cell_index])
         if np.isnan(value):
             return None
-        time = ds.time.values
-        if "step" in ds.coords:
-            time = time + ds.step.values
-        return time, value
+        # Use cfgrib's exact `valid_time` coordinate. Computing it as
+        # `time + step` instead lands one nanosecond short for some sub-hourly
+        # steps (cfgrib stores `step` as float hours), so a 13:05:00 frame
+        # truncates to 13:04:59 — off the 5-minute grid, leaving gaps in the
+        # dashboard's run-evolution chart.
+        return ds.valid_time.values, value
     finally:
         ds.close()
 

@@ -53,3 +53,32 @@ def test_extract_skips_files_with_nan_at_cell():
     result = extract.extract_variable(paths, "TOT_PREC", cell_index=0)
     # Cell 0 is outside the domain -> no values extracted
     assert result == {} or all(len(v) == 0 for v in result.values())
+
+
+def _all_ens01_paths(variable: str) -> list[Path]:
+    local = discover.scan_local_runs()
+    for _run_id, by_var in local.items():
+        ens01 = [f for f in by_var.get(variable, []) if "_e01_" in f.name]
+        if ens01:
+            return ens01
+    return []
+
+
+def test_extract_timestamps_land_on_whole_minutes():
+    """Valid times must land on whole-minute boundaries (no :59 artifacts).
+
+    cfgrib stores `step` as float hours, so `time + step` for some 5-minute
+    steps lands one nanosecond short of the mark (e.g. 13:04:59.999...), which
+    truncates to 13:04:59 — one second off the 5-minute grid. That knocks runs
+    off the shared time axis and leaves gaps in the dashboard's run-evolution
+    chart. Extraction must use cfgrib's exact `valid_time` instead.
+    """
+    paths = _all_ens01_paths("TOT_PREC")
+    if not paths:
+        pytest.skip("no local TOT_PREC GRIB files available")
+    result = extract.extract_variable(paths, "TOT_PREC", cell_index=_VALID_CELL)
+    times = [t for series in result.values() for t, _ in series]
+    assert times, "expected at least one extracted timestamp"
+    off_grid = [str(t) for t in times
+                if int(t.astype("datetime64[s]").astype("int64") % 60) != 0]
+    assert not off_grid, f"timestamps not on whole-minute boundary: {off_grid}"
