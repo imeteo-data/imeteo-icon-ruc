@@ -1,1530 +1,787 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title id="pageTitle">ICON-D2-RUC-EPS · Forecast</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICON-D2-RUC-EPS · Bratislava</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
 <style>
-/* ── Unified design tokens ──────────────────────────────
-   Palette sourced from imeteo.sk (primary blue #206ff2,
-   navy #19222a/#2b4672, sun yellow #ffd92a).
-   Strict 5-step type scale and 4px spacing rhythm —
-   every visual element composes from these tokens only.
-*/
 :root{
-  /* Surfaces */
-  --bg:       #f5f7fa;
-  --panel:    #ffffff;
-  --panel-2:  #f1f3f7;
+  --bg:#0b0e14; --panel:#151a23; --raised:#1b2230; --hair:#232c3a;
+  --text:#e6edf5; --muted:#8a96a8; --faint:#5b6675;
+  --precip:#3b9eff; --precip-rgb:59,158,255;
+  --wind:#5fb6c9; --wind-rgb:95,182,201;
+  --temp:#ffb454; --temp-rgb:255,180,84;
+  --alert:#ff5c5c; --ok:#4ade80; --thr:#ffd92a;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --radius:10px; --hairw:1px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1;}
+body{padding-bottom:var(--s5);}
+.mono{font-family:var(--mono);font-feature-settings:"tnum" 1;}
+.lbl{font-family:var(--sans);text-transform:uppercase;letter-spacing:.12em;
+  font-size:11px;font-weight:600;color:var(--muted);}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+a{color:inherit;}
 
-  /* Borders (subtle → strong) */
-  --line:     #e1e5ec;
-  --line-2:   #c9d0db;
+/* ===== status bar ===== */
+/* opaque (no backdrop-filter): blur recomputes every scroll frame on mobile
+   and is a primary cause of scroll jank / flicker. */
+.statusbar{position:sticky;top:0;z-index:50;background:var(--bg);
+  border-bottom:var(--hairw) solid var(--hair);
+  display:flex;align-items:center;gap:var(--s4);
+  padding:var(--s3) var(--s4);flex-wrap:wrap;}
+.sb-id{display:flex;align-items:center;gap:var(--s2);font-family:var(--mono);
+  font-size:13px;font-weight:500;letter-spacing:.02em;}
+.led{width:9px;height:9px;border-radius:2px;background:var(--ok);
+  box-shadow:0 0 8px rgba(74,222,128,.7);flex:none;
+  animation:pulse 2.6s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.sb-loc{color:var(--muted);}
+.sb-spacer{flex:1 1 auto;}
+.sb-meta{display:flex;align-items:center;gap:var(--s4);font-family:var(--mono);
+  font-size:12px;color:var(--muted);white-space:nowrap;}
+.sb-meta b{color:var(--text);font-weight:500;}
+.runswitch{position:relative;}
+.runswitch select{appearance:none;-webkit-appearance:none;
+  font-family:var(--mono);font-size:13px;font-weight:500;color:var(--text);
+  background:var(--raised);border:var(--hairw) solid var(--hair);
+  border-radius:8px;padding:7px 30px 7px 12px;cursor:pointer;letter-spacing:.02em;}
+.runswitch select:hover{border-color:#33425a;}
+.runswitch select:focus{outline:none;border-color:var(--precip);}
+.runswitch::after{content:"";position:absolute;right:12px;top:50%;
+  width:6px;height:6px;border-right:2px solid var(--muted);
+  border-bottom:2px solid var(--muted);transform:translateY(-65%) rotate(45deg);
+  pointer-events:none;}
 
-  /* Ink ladder — 4 steps, each with clear use */
-  --ink:      #19222a;   /* titles, hero numbers, primary text */
-  --text:     #2b3440;   /* body copy */
-  --muted:    #5e6875;   /* labels, metadata, descriptions */
-  --muted-2:  #9aa1ad;   /* tertiary (ticks, separators) */
+/* ===== layout ===== */
+.wrap{max-width:1180px;margin:0 auto;padding:var(--s4);}
+.section{margin-top:var(--s5);}
+.section-head{display:flex;align-items:baseline;gap:var(--s3);margin-bottom:var(--s3);}
+.section-head .sub{font-family:var(--mono);font-size:11px;color:var(--faint);}
 
-  /* Brand accents — one base + rgb triplet per variable */
-  --precip:#206ff2;   --precip-rgb:32,111,242;
-  --wind:  #2b4672;   --wind-rgb:43,70,114;
-  --temp:  #e5594a;   --temp-rgb:229,89,74;
-  --sun:   #ffd92a;   --sun-ink:#6b5400;
+/* entrance anim */
+.anim{opacity:0;transform:translateY(10px);animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards;}
+@keyframes rise{to{opacity:1;transform:none;}}
 
-  --bad:#dc3741;  --good:#8dd542;
+/* ===== answer layer ===== */
+.answers{display:flex;flex-direction:column;gap:var(--s3);}
+.readout-panel{background:var(--panel);border:var(--hairw) solid var(--hair);
+  border-radius:var(--radius);position:relative;overflow:hidden;}
+.readout-panel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--accent,var(--muted));}
+.rp-body{padding:var(--s4) var(--s4) var(--s4) calc(var(--s4) + 3px);}
+.rp-top{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s3);
+  margin-bottom:var(--s2);}
+.rp-tag{font-family:var(--sans);text-transform:uppercase;letter-spacing:.12em;
+  font-size:11px;font-weight:600;color:var(--accent);}
+.rp-unit{font-family:var(--mono);font-size:11px;color:var(--faint);}
+.rp-head{font-family:var(--mono);font-size:23px;font-weight:600;line-height:1.18;
+  letter-spacing:-.01em;color:var(--text);}
+.rp-head .now{color:var(--accent);}
+.rp-head .accent{color:var(--accent);}
+.rp-sub{margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--muted);
+  line-height:1.5;letter-spacing:.01em;}
+.rp-sub .dim{color:var(--faint);}
+.rp-sub .accent{color:var(--accent);}
+.rp-sub b{color:var(--text);font-weight:600;}
+.rp-miss .rp-head{color:var(--faint);font-size:18px;}
+@media(min-width:760px){.rp-head{font-size:26px;}}
+@media(max-width:480px){.rp-head{font-size:20px;}}
 
-  /* Typography — 5 sizes, used EVERYWHERE. No ad-hoc values. */
-  --font:       "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --fs-xs:      11px;   /* eyebrow, axis ticks, tick labels, micro */
-  --fs-sm:      13px;   /* description, metadata, secondary labels */
-  --fs-base:    14px;   /* body, readouts, controls, axis numbers */
-  --fs-md:      16px;   /* section titles (meteogram, block, evolution) */
-  --fs-lg:      22px;   /* page/brand title */
+/* expander */
+.rp-expander{display:flex;align-items:center;gap:8px;width:100%;
+  min-height:44px;padding:0 var(--s4) 0 calc(var(--s4) + 3px);
+  border-top:var(--hairw) solid var(--hair);
+  font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--faint);transition:color .12s;}
+.rp-expander:hover{color:var(--muted);}
+.rp-expander[aria-expanded="true"]{color:var(--accent);}
+.rp-caret{display:inline-block;transition:transform .18s ease;}
+.rp-expander[aria-expanded="true"] .rp-caret{transform:rotate(180deg);}
+.rp-detail{display:none;border-top:var(--hairw) solid var(--hair);
+  padding:var(--s3) var(--s4) var(--s2) calc(var(--s4) + 3px);}
+.rp-detail.open{display:block;}
+.rp-detail .readout{padding-top:0;}
 
-  /* Spacing — 4px rhythm; applied uniformly */
-  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px;
-  --s-5:20px; --s-6:24px; --s-8:32px; --s-10:40px;
+/* ===== panels ===== */
+.panel{background:var(--panel);border:var(--hairw) solid var(--hair);
+  border-radius:var(--radius);padding:var(--s4);}
 
-  /* Shape */
-  --radius:   10px;
-  --radius-sm: 6px;
-  --radius-xs: 3px;
+/* shared hover readout (desktop detail charts) */
+.readout{font-family:var(--mono);font-size:13px;color:var(--text);
+  padding:var(--s2) 0 var(--s3);min-height:24px;letter-spacing:.01em;
+  display:flex;gap:14px;flex-wrap:wrap;align-items:center;}
+.readout .time{color:var(--text);font-weight:600;}
+.readout .dim{color:var(--faint);}
 
-  /* Elevation */
-  --shadow:   0 1px 2px rgba(25,34,42,0.04), 0 2px 12px rgba(25,34,42,0.05);
+/* ===== segmented controls ===== */
+.seg{display:inline-flex;background:var(--bg);border:var(--hairw) solid var(--hair);
+  border-radius:8px;padding:3px;gap:2px;}
+.seg button{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--muted);
+  padding:6px 12px;border-radius:6px;letter-spacing:.02em;white-space:nowrap;
+  transition:background .12s,color .12s;}
+.seg button:hover{color:var(--text);}
+.seg button.active{background:var(--raised);color:var(--text);
+  box-shadow:inset 0 0 0 1px var(--hair);}
+.seg button.active[data-accent]{color:var(--seg-accent,var(--text));}
 
-  /* Derived translucents for bands/legend swatches */
-  --precip-band-outer:rgba(32,111,242,0.12);
-  --precip-band-inner:rgba(32,111,242,0.30);
-  --wind-band-outer:  rgba(43,70,114,0.12);
-  --wind-band-inner:  rgba(43,70,114,0.30);
-  --temp-band-outer:  rgba(229,89,74,0.12);
-  --temp-band-inner:  rgba(229,89,74,0.30);
-}
-*{box-sizing:border-box}
-html,body{
-  margin:0;padding:0;background:var(--bg);color:var(--text);
-  font-family:var(--font);font-size:var(--fs-base);line-height:1.55;
-  font-feature-settings:"tnum" 1, "cv02" 1, "cv11" 1;
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-}
-a{color:var(--precip);text-decoration:none}
-a:hover{text-decoration:underline}
+/* run evolution (collapsible) */
+.evo-expander{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;
+  padding:var(--s3) var(--s4);
+  font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);}
+.evo-expander:hover{color:var(--text);}
+.evo-expander .rp-caret{margin-left:auto;}
+.evo-expander[aria-expanded="true"] .rp-caret{transform:rotate(180deg);}
+.evo-body{display:none;padding:0 var(--s4) var(--s4);}
+.evo-body.open{display:block;}
+/* fixed height so toggling runs/variable can't collapse the box and shift scroll */
+#evoChart{min-height:260px;}
 
-.page{max-width:1200px;margin:0 auto;padding:var(--s-8) var(--s-6) var(--s-10)}
+/* run evolution chips */
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s3);}
+.chip{font-family:var(--mono);font-size:11px;color:var(--muted);
+  background:var(--bg);border:var(--hairw) solid var(--hair);
+  border-radius:6px;padding:5px 9px;cursor:pointer;letter-spacing:.02em;
+  transition:border-color .12s,color .12s;}
+.chip:hover{color:var(--text);}
+.chip.on{color:var(--text);border-color:var(--accent,var(--precip));
+  box-shadow:inset 0 0 0 1px var(--accent,var(--precip));}
 
-/* ── Reusable building blocks ──────────────────────────── */
-/* One card rule for every boxed surface. */
-.card{
-  background:var(--panel);
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-}
-/* One header rule for section titles (detail + evolution + meteogram). */
-.title{
-  font-size:var(--fs-md);
-  font-weight:700;
-  letter-spacing:-0.01em;
-  color:var(--ink);
-  margin:0;
-}
-.title .unit{
-  font-size:var(--fs-sm);
-  font-weight:500;
-  color:var(--muted);
-  margin-left:var(--s-2);
-  letter-spacing:0;
-}
-.title-desc{
-  font-size:var(--fs-sm);
-  color:var(--muted);
-  margin-top:2px;
-}
-/* One UI-label rule (eyebrow, run-picker, ctrl-label). */
-.ui-label{
-  font-size:var(--fs-xs);
-  font-weight:600;
-  letter-spacing:0.14em;
-  text-transform:uppercase;
-  color:var(--muted);
-}
+/* ===== footer ===== */
+.footer{margin-top:var(--s6);border-top:var(--hairw) solid var(--hair);
+  padding-top:var(--s4);font-family:var(--mono);font-size:11px;color:var(--faint);
+  letter-spacing:.04em;text-transform:uppercase;display:flex;
+  justify-content:space-between;gap:var(--s3);flex-wrap:wrap;}
 
-/* ── Header ─────────────────────────────────────────────── */
-.header{
-  display:flex;align-items:flex-end;justify-content:space-between;
-  gap:var(--s-5);flex-wrap:wrap;
-  padding:var(--s-5) var(--s-6);
-  margin-bottom:var(--s-6);
-  background:var(--ink);color:#fff;
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-}
-.brand{display:flex;flex-direction:column;gap:var(--s-1);color:#fff}
-.brand-row{display:flex;align-items:center;gap:var(--s-2)}
-.brand-dot{
-  display:inline-block;width:12px;height:12px;border-radius:50%;
-  background:var(--sun);
-  box-shadow:0 0 12px rgba(255,217,42,0.4);
-}
-.brand-eyebrow{
-  font-size:var(--fs-xs);
-  font-weight:600;letter-spacing:0.16em;text-transform:uppercase;
-  color:rgba(255,255,255,0.65);
-}
-.brand-title{
-  font-size:var(--fs-lg);line-height:1.1;font-weight:700;letter-spacing:-0.015em;
-}
-.brand-title .loc{
-  color:rgba(255,255,255,0.65);
-  font-weight:400;margin-left:var(--s-3);font-size:var(--fs-base);
-  letter-spacing:0;
-}
-.brand-sub{
-  font-size:var(--fs-sm);color:rgba(255,255,255,0.55);
-}
+.miss{font-family:var(--mono);font-size:13px;color:var(--faint);
+  padding:var(--s5) 0;text-align:center;}
 
-.header-meta{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s-2)}
-.run-picker{display:flex;align-items:center;gap:var(--s-2)}
-.run-picker label{
-  font-size:var(--fs-xs);font-weight:600;
-  letter-spacing:0.14em;text-transform:uppercase;
-  color:rgba(255,255,255,0.6);
-}
-.run-picker select{
-  background:rgba(255,255,255,0.08);color:#fff;
-  border:1px solid rgba(255,255,255,0.18);border-radius:var(--radius-sm);
-  padding:7px 32px 7px 12px;
-  font-family:var(--font);font-size:var(--fs-sm);font-weight:500;
-  cursor:pointer;appearance:none;-webkit-appearance:none;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23ffffff' stroke-width='1.75'><path d='M2 2l4 4 4-4'/></svg>");
-  background-repeat:no-repeat;background-position:right 10px center;background-size:9px;
-  transition:background 120ms ease, border-color 120ms ease;
-}
-.run-picker select:hover{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.3)}
-.age{font-size:var(--fs-xs);color:rgba(255,255,255,0.55);letter-spacing:0.02em}
+/* uPlot tweaks */
+.uplot{font-family:var(--mono);}
+.u-axis{color:var(--faint);}
+.u-cursor-x,.u-cursor-y{border-color:rgba(138,150,168,.4)!important;}
+.u-cursor-pt{display:none;}
+/* let vertical scroll pass through charts on touch (prevents scroll-freeze
+   when a finger lands on a chart); horizontal isn't needed here */
+.uplot,.u-over{touch-action:pan-y;}
+.rp-chart,#evoChart{touch-action:pan-y;}
 
-/* ── Chart block (detail + evolution share this structure) ── */
-.block{margin-bottom:var(--s-6)}
-.block-head{
-  display:flex;align-items:flex-start;justify-content:space-between;
-  gap:var(--s-4);margin-bottom:var(--s-3);flex-wrap:wrap;
-}
-.block-title{display:flex;align-items:center;gap:var(--s-2)}
-.block-title h2{
-  margin:0;font-size:var(--fs-md);font-weight:700;letter-spacing:-0.01em;color:var(--ink);
-}
-.block-title h2 .unit{
-  font-size:var(--fs-sm);font-weight:500;color:var(--muted);margin-left:var(--s-2);
-}
-.block-title .accent-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-.block-title[data-var="TOT_PREC"] .accent-dot{background:var(--precip)}
-.block-title[data-var="VMAX_10M"] .accent-dot{background:var(--wind)}
-.block-title[data-var="T_2M"]     .accent-dot{background:var(--temp)}
-.block-desc{font-size:var(--fs-sm);color:var(--muted);margin-top:2px}
-
-/* Controls (segmented buttons) */
-.controls{display:flex;gap:var(--s-3);flex-wrap:wrap;align-items:center}
-.ctrl{display:flex;align-items:center;gap:var(--s-2)}
-.ctrl-label{
-  font-size:var(--fs-xs);font-weight:700;letter-spacing:0.14em;
-  text-transform:uppercase;color:var(--muted);
-}
-.seg{
-  display:flex;background:var(--panel-2);border:1px solid var(--line);
-  border-radius:var(--radius-sm);padding:2px;gap:2px;
-}
-.seg button{
-  font-family:var(--font);font-size:var(--fs-xs);font-weight:600;
-  background:transparent;color:var(--muted);border:0;
-  padding:5px 10px;cursor:pointer;border-radius:var(--radius-xs);
-  transition:all 120ms ease;letter-spacing:0.02em;
-}
-.seg button:hover{color:var(--ink);background:rgba(25,34,42,0.04)}
-.seg button.active{background:var(--ink);color:#fff}
-.seg[data-accent="precip"] button.active{background:var(--precip);color:#fff}
-.seg[data-accent="wind"]   button.active{background:var(--wind);  color:#fff}
-.seg[data-accent="temp"]   button.active{background:var(--temp);  color:#fff}
-
-/* Chart container — same for detail + evolution */
-.chart-wrap{
-  background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
-  padding:var(--s-4);position:relative;overflow:hidden;
-}
-.chart-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
-.chart-scroll::-webkit-scrollbar{height:6px}
-.chart-scroll::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
-.chart-scroll::-webkit-scrollbar-track{background:transparent}
-/* Always render full forecast at readable density; scroll when viewport is narrower. */
-.chart{height:340px;min-width:720px}
-
-/* Hover readout row under each chart */
-.readout{
-  display:flex;gap:var(--s-5);flex-wrap:wrap;
-  padding:var(--s-3) var(--s-4);
-  margin:var(--s-3) calc(-1 * var(--s-4)) calc(-1 * var(--s-4));
-  border-top:1px solid var(--line);
-  background:var(--bg);
-  border-radius:0 0 var(--radius) var(--radius);
-  font-size:var(--fs-sm);color:var(--text);
-  min-height:44px;
-}
-.readout .time{color:var(--muted);font-weight:600;margin-right:var(--s-1)}
-.readout .key{color:var(--muted);margin-right:var(--s-1)}
-.readout .val{color:var(--ink);font-weight:600}
-.readout .sep{color:var(--muted-2);margin:0 var(--s-1)}
-
-/* Legend under detail charts */
-.legend{
-  display:flex;gap:var(--s-5);flex-wrap:wrap;margin-top:var(--s-3);padding:0 var(--s-1);
-  font-size:var(--fs-xs);color:var(--muted);letter-spacing:0.02em;
-}
-.legend .sw{
-  display:inline-block;width:22px;height:8px;margin-right:var(--s-1);
-  vertical-align:middle;border-radius:2px;
-}
-.legend[data-var="TOT_PREC"] .sw.outer{background:var(--precip-band-outer)}
-.legend[data-var="TOT_PREC"] .sw.inner{background:var(--precip-band-inner)}
-.legend[data-var="TOT_PREC"] .sw.median{background:var(--precip)}
-.legend[data-var="VMAX_10M"] .sw.outer{background:var(--wind-band-outer)}
-.legend[data-var="VMAX_10M"] .sw.inner{background:var(--wind-band-inner)}
-.legend[data-var="VMAX_10M"] .sw.median{background:var(--wind)}
-.legend[data-var="T_2M"]     .sw.outer{background:var(--temp-band-outer)}
-.legend[data-var="T_2M"]     .sw.inner{background:var(--temp-band-inner)}
-.legend[data-var="T_2M"]     .sw.median{background:var(--temp)}
-.legend .sw.threshold{background:var(--sun);height:2px;margin-bottom:3px;box-shadow:0 0 6px rgba(255,217,42,0.5)}
-
-/* ── Meteogram ─────────────────────────────────────────── */
-.meteogram{
-  background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
-  padding:var(--s-4) var(--s-4) var(--s-2);
-  margin-bottom:var(--s-6);overflow:hidden;
-}
-.mg-head{
-  display:flex;align-items:baseline;justify-content:space-between;
-  gap:var(--s-4);margin-bottom:var(--s-3);flex-wrap:wrap;
-}
-.mg-head h2{
-  margin:0;font-size:var(--fs-md);font-weight:700;letter-spacing:-0.01em;color:var(--ink);
-}
-.mg-head .desc{font-size:var(--fs-sm);color:var(--muted)}
-.mg-scroll{
-  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
-  margin:0 calc(-1 * var(--s-2));padding:0 var(--s-2);
-}
-.mg-scroll::-webkit-scrollbar{height:6px}
-.mg-scroll::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
-.mg-scroll::-webkit-scrollbar-track{background:transparent}
-.mg-stack{min-width:720px}
-.mg-panel{padding:var(--s-1) 0 var(--s-1)}
-.mg-panel + .mg-panel{border-top:1px solid var(--line)}
-.mg-panel .mg-label{
-  display:flex;align-items:baseline;gap:var(--s-2);
-  padding:var(--s-1) 0 var(--s-1) 2px;
-  font-size:var(--fs-xs);font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
-  color:var(--muted);
-}
-.mg-panel .mg-label .unit{
-  color:var(--muted-2);font-weight:500;letter-spacing:0.02em;text-transform:none;
-  font-size:var(--fs-xs);
-}
-.mg-panel .mg-chart{width:100%}
-/* Shared readout styling with detail charts — tinted background + inset from card edges. */
-.mg-readout{
-  display:flex;gap:var(--s-4);flex-wrap:wrap;
-  padding:var(--s-3) var(--s-4);
-  margin:var(--s-3) calc(-1 * var(--s-4)) calc(-1 * var(--s-2));
-  border-top:1px solid var(--line);
-  background:var(--bg);
-  border-radius:0 0 var(--radius) var(--radius);
-  font-size:var(--fs-sm);color:var(--text);
-  min-height:44px;
-}
-.mg-readout .time{color:var(--muted);font-weight:600;margin-right:var(--s-1)}
-.mg-readout .chip-val{color:var(--ink);font-weight:600}
-.mg-readout .sep{color:var(--muted-2);margin:0 var(--s-1)}
-
-/* ── Evolution section ──────────────────────────────────── */
-.evolution-head{
-  display:flex;align-items:flex-end;justify-content:space-between;
-  gap:var(--s-4);padding-top:var(--s-5);margin-bottom:var(--s-4);
-  border-top:1px solid var(--line);flex-wrap:wrap;
-}
-.evolution-head .title{
-  font-size:var(--fs-md);font-weight:700;letter-spacing:-0.01em;color:var(--ink);
-}
-.evolution-head .desc{font-size:var(--fs-sm);color:var(--muted);margin-top:2px}
-
-.run-chips{display:flex;gap:var(--s-1);flex-wrap:wrap;margin-bottom:var(--s-4)}
-.chip{
-  display:inline-flex;align-items:center;gap:var(--s-2);
-  font-family:var(--font);font-size:var(--fs-xs);font-weight:600;
-  padding:5px 10px;
-  background:var(--panel);border:1px solid var(--line);
-  color:var(--muted);border-radius:999px;cursor:pointer;
-  transition:all 120ms ease;
-}
-.chip:hover{color:var(--ink);border-color:var(--line-2)}
-.chip .chip-dot{width:8px;height:8px;border-radius:50%;background:var(--line-2);display:inline-block;flex:none}
-.chip.active{color:var(--ink)}
-.chip.active[data-accent="precip"]{border-color:var(--precip);background:rgba(32,111,242,0.05)}
-.chip.active[data-accent="wind"]  {border-color:var(--wind);  background:rgba(43,70,114,0.05)}
-.chip.active[data-accent="temp"]  {border-color:var(--temp);  background:rgba(229,89,74,0.05)}
-.chip-actions{display:flex;gap:var(--s-1);margin-left:auto}
-.chip-action{
-  font-family:var(--font);font-size:var(--fs-xs);font-weight:600;
-  padding:5px 10px;color:var(--muted);background:var(--panel);
-  border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;
-  letter-spacing:0.06em;text-transform:uppercase;
-  transition:all 120ms ease;
-}
-.chip-action:hover{color:var(--ink);border-color:var(--line-2)}
-
-/* ── Footer ─────────────────────────────────────────────── */
-.footer{
-  margin-top:var(--s-8);padding-top:var(--s-4);border-top:1px solid var(--line);
-  display:flex;justify-content:space-between;gap:var(--s-4);flex-wrap:wrap;
-  font-size:var(--fs-xs);color:var(--muted);letter-spacing:0.02em;
-}
-.footer a{color:var(--precip);font-weight:500}
-
-/* ── States ─────────────────────────────────────────────── */
-.err{
-  background:rgba(220,55,65,0.06);border:1px solid rgba(220,55,65,0.35);
-  color:var(--bad);padding:var(--s-3) var(--s-4);border-radius:var(--radius-sm);
-  font-size:var(--fs-sm);margin-bottom:var(--s-4);
-}
-.empty{
-  color:var(--muted);font-size:var(--fs-sm);
-  padding:var(--s-10) 0;text-align:center;letter-spacing:0.02em;
-}
-.loading{
-  color:var(--muted);font-size:var(--fs-xs);padding:var(--s-6) 0;text-align:center;
-  letter-spacing:0.12em;text-transform:uppercase;font-weight:600;
-}
-
-/* ── uPlot overrides ────────────────────────────────────── */
-.uplot{background:transparent;color:var(--ink)}
-.u-axis text{fill:var(--text)!important}
-.u-axis .u-label{font-size:var(--fs-base);letter-spacing:0.02em;font-weight:700}
-.u-select{background:rgba(32,111,242,0.08)!important}
-.u-cursor-x,.u-cursor-y{background:var(--line-2)!important}
-
-/* Subtle entrance animation for cards */
-@keyframes fadeInUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-/* ── Forecast summary banner ───────────────────────────── */
-.summary{
-  background:linear-gradient(135deg, var(--precip) 0%, var(--wind) 100%);
-  color:#fff;
-  border-radius:var(--radius);
-  padding:var(--s-5) var(--s-6);
-  margin-bottom:var(--s-5);
-  box-shadow:var(--shadow);
-  font-size:var(--fs-md);
-  font-weight:500;
-  line-height:1.5;
-  letter-spacing:-0.005em;
-}
-.summary .summary-eyebrow{
-  display:block;
-  font-size:var(--fs-xs);
-  font-weight:700;
-  letter-spacing:0.08em;
-  text-transform:uppercase;
-  opacity:0.8;
-  margin-bottom:var(--s-2);
-}
-.summary .summary-text{display:block}
-@media (max-width:720px){
-  .summary{padding:var(--s-4);font-size:var(--fs-base)}
-}
-
-.header, .summary, .meteogram, .block, .evolution-head{animation:fadeInUp 280ms ease both}
-.block:nth-of-type(1){animation-delay:40ms}
-.block:nth-of-type(2){animation-delay:80ms}
-.block:nth-of-type(3){animation-delay:120ms}
-
-/* ── Mobile (≤720px) ───────────────────────────────────── */
-@media (max-width:720px){
-  .page{padding:var(--s-4) var(--s-3) var(--s-8)}
-  .header{
-    padding:var(--s-4);flex-direction:column;align-items:flex-start;
-    gap:var(--s-3);margin-bottom:var(--s-5);
-  }
-  .header-meta{align-items:flex-start;width:100%}
-  .run-picker{width:100%}
-  .run-picker select{flex:1}
-  .brand-title .loc{display:block;margin-left:0;margin-top:2px;font-size:var(--fs-sm)}
-
-  .block{margin-bottom:var(--s-5)}
-  .block-head{gap:var(--s-2);margin-bottom:var(--s-2)}
-
-  .controls{gap:var(--s-2);width:100%}
-  .ctrl{gap:var(--s-1);flex-wrap:wrap}
-
-  .chart-wrap{padding:var(--s-3) var(--s-2);border-radius:var(--radius-sm)}
-  .chart-scroll{
-    margin:calc(-1 * var(--s-3)) calc(-1 * var(--s-2)) 0;
-    padding:var(--s-3) var(--s-2) 0;
-    mask-image:linear-gradient(to right, black 0, black calc(100% - 20px), transparent 100%);
-    -webkit-mask-image:linear-gradient(to right, black 0, black calc(100% - 20px), transparent 100%);
-  }
-  .readout{
-    padding:var(--s-2) var(--s-3);
-    margin:var(--s-2) calc(-1 * var(--s-2)) calc(-1 * var(--s-2));
-    gap:var(--s-3);
-  }
-
-  .legend{gap:var(--s-3)}
-  .legend .sw{width:16px;height:7px}
-
-  .meteogram{padding:var(--s-3) var(--s-3) var(--s-1)}
-  .evolution-head{gap:var(--s-2);padding-top:var(--s-4);margin-bottom:var(--s-3)}
-
-  .footer{margin-top:var(--s-5)}
+@media(max-width:480px){
+  .statusbar{gap:var(--s2);}
+  .sb-spacer{flex-basis:100%;height:0;}
+  .sb-meta{font-size:11px;gap:var(--s3);}
 }
 </style>
 </head>
 <body>
-<div class="page">
-  <header class="header">
-    <div class="brand">
-      <div class="brand-row">
-        <span class="brand-dot" aria-hidden="true"></span>
-        <span class="brand-eyebrow">ICON-D2-RUC-EPS · DWD ensemble</span>
-      </div>
-      <div class="brand-title"><span id="locationName">—</span> <span class="loc" id="locationCoords">—</span></div>
-      <div class="brand-sub" id="brandSub"></div>
-    </div>
-    <div class="header-meta">
-      <div class="run-picker">
-        <label for="runSelect">Forecast run</label>
-        <select id="runSelect"></select>
-      </div>
-      <div class="age" id="age"></div>
-    </div>
-  </header>
 
-  <div id="err" class="err" style="display:none"></div>
-  <div id="summary" class="summary" style="display:none">
-    <span class="summary-eyebrow" id="summaryEyebrow">Forecast summary</span>
-    <span class="summary-text" id="summaryText"></span>
+<header class="statusbar">
+  <div class="sb-id"><span class="led" id="led"></span>ICON-D2-RUC-EPS<span class="sb-loc">· BRATISLAVA</span></div>
+  <div class="sb-spacer"></div>
+  <div class="runswitch"><select id="runSelect" aria-label="Forecast run"></select></div>
+  <div class="sb-meta">
+    <span>UPDATED <b id="updAgo">—</b></span>
+    <span>Δ <b id="gridDist">—</b></span>
   </div>
-  <div id="meteogram"></div>
-  <div id="charts"></div>
-  <div id="evolution"></div>
+</header>
+
+<main class="wrap">
+
+  <!-- ANSWER LAYER -->
+  <section class="section" id="answersSec" style="margin-top:var(--s4)">
+    <div class="answers" id="answers"></div>
+  </section>
+
+  <!-- RUN EVOLUTION (collapsible, secondary) -->
+  <section class="section anim" style="animation-delay:.25s">
+    <div class="panel" style="padding:0;overflow:hidden">
+      <button class="evo-expander" id="evoToggle" aria-expanded="false" aria-controls="evoBody">
+        <span>How the forecast has changed</span>
+        <span class="rp-caret">▾</span>
+      </button>
+      <div class="evo-body" id="evoBody">
+        <div class="seg" id="evoSeg" style="margin:var(--s2) 0 var(--s4)"></div>
+        <div class="readout" id="evoReadout"><span class="dim">Hover the chart for values</span></div>
+        <div id="evoChart"></div>
+        <div class="chips" id="evoChips"></div>
+      </div>
+    </div>
+  </section>
 
   <footer class="footer">
-    <span id="footerLeft">Model: ICON-D2-RUC-EPS · 20-member ensemble · open data from <a href="https://opendata.dwd.de" target="_blank" rel="noopener">DWD</a></span>
-    <span id="footerRight"></span>
+    <span>Model ICON-D2-RUC-EPS · 20-member ensemble · DWD OpenData</span>
+    <span id="footRun">—</span>
   </footer>
-</div>
+
+</main>
 
 <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
 <script>
-(() => {
-const $ = (id) => document.getElementById(id);
-const fmtTime = (t) => new Date(t).toLocaleString([], {
-  month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'
-});
-const fmtRunLabel = (id) => {
-  const date = id.slice(0,10);
-  const hm = id.slice(11);
-  const d = new Date(date + 'T00:00:00Z');
-  const m = d.toLocaleDateString('en', {month:'short', day:'numeric'});
-  return `${m} · ${hm.slice(0,2)}:${hm.slice(2)} UTC`;
-};
-const fmtRunShort = (id) => {
-  const date = id.slice(5,10);
-  const hm = id.slice(11);
-  return `${date} ${hm.slice(0,2)}:${hm.slice(2)}`;
-};
-const fmtNum = (v, digits=1) => (v == null || Number.isNaN(v)) ? '–' : Number(v).toFixed(digits);
-const fmtAge = (iso) => {
-  if (!iso) return '';
-  const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
-  if (mins < 60) return `updated ${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 48) return `updated ${hrs}h ago`;
-  return `updated ${Math.floor(hrs/24)}d ago`;
-};
+"use strict";
 
-const getLocationTimezone = (data) => {
-  // Try to extract timezone from data; fallback to guess based on coordinates
-  if (data.timezone) return data.timezone;
-  if (data.location && data.location.lon) {
-    // Simple fallback: use Europe/Bratislava for Central Europe, other timezones for other regions
-    // For now, default to UTC and let the location name guide the user
-    return 'UTC';
-  }
-  return 'UTC';
+/* ---------- data fetch ---------- */
+async function fetchJSON(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw new Error(u+': '+r.status);return r.json();}
+async function fetchRuns(){try{return (await fetchJSON('./data/forecasts/index.json')).runs||[];}catch(e){return fetchJSON('/api/runs');}}
+async function fetchRun(id){try{return await fetchJSON('./data/forecasts/'+id+'.json');}catch(e){return fetchJSON('/api/runs/'+id);}}
+
+/* ---------- meta ---------- */
+const VARS={
+  TOT_PREC:{label:'Precipitation',short:'PRECIP',unit:'mm/h',accent:'var(--precip)',rgb:'59,158,255',dp:2,clamp:true},
+  VMAX_10M:{label:'Wind gust',short:'WIND',unit:'m/s',accent:'var(--wind)',rgb:'95,182,201',dp:1,clamp:true},
+  T_2M:{label:'Temperature',short:'TEMP',unit:'°C',accent:'var(--temp)',rgb:'255,180,84',dp:1,clamp:false}
 };
+const VAR_ORDER=['TOT_PREC','VMAX_10M','T_2M'];
+const ACCENT_HEX={TOT_PREC:'#3b9eff',VMAX_10M:'#5fb6c9',T_2M:'#ffb454'};
 
-const formatCoords = (lat, lon) => {
-  const latStr = Math.abs(lat).toFixed(2) + (lat >= 0 ? '°N' : '°S');
-  const lonStr = Math.abs(lon).toFixed(2) + (lon >= 0 ? '°E' : '°W');
-  return `${latStr} · ${lonStr}`;
-};
+/* ---------- helpers ---------- */
+const N=v=>(v===null||v===undefined||Number.isNaN(v))?null:v;
+function fmt(v,dp){v=N(v);return v===null?'—':v.toFixed(dp);}
+function pct(frac){frac=N(frac);return frac===null?'—':Math.round(frac*100)+'%';}
+function toXs(times){return times.map(t=>new Date(t).getTime()/1000);}
+function safeArr(a){return Array.isArray(a)?a:[];}
+function getVar(run,k){return run&&run.variables&&run.variables[k]?run.variables[k]:null;}
 
-const VAR_META = {
-  TOT_PREC: {
-    label:'Precipitation', accent:'precip', rgb:'32,111,242',
-    desc:'Ground-level precipitation rate, deaccumulated from model output',
-  },
-  VMAX_10M: {
-    label:'Wind Gust', accent:'wind', rgb:'43,70,114',
-    desc:'Maximum instantaneous wind gust at 10 m above ground',
-  },
-  T_2M: {
-    label:'Temperature', accent:'temp', rgb:'229,89,74',
-    desc:'Air temperature at 2 m above ground',
-    allowNegative:true,
-  },
-};
-
-const SPREADS = [
-  {key:'wide', label:'P10–90'},
-  {key:'inner', label:'P25–75'},
-  {key:'median', label:'P50'},
-];
-
-const state = {
-  runs: [],
-  data: null,
-  allRuns: {},
-  controls: {},
-  evolutionSelected: new Set(),
-};
-const plots = {};
-const evolutionPlots = {};
-const readouts = {};
-
-// Static-first: fetch JSON directly from data/forecasts/ when served as static files
-// (GitHub Pages). Fall back to the Flask API when the static path 404s (local dev).
-async function fetchJSON(url){
-  const r = await fetch(url, {cache: 'no-store'});
-  if (!r.ok) throw new Error(`${url}: ${r.status}`);
-  return r.json();
+/* time axis helpers */
+const hourLabels=(u,splits)=>splits.map(v=>String(new Date(v*1000).getHours()));
+function hhmm(sec){return new Date(sec*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});}
+function dayhm(sec){const d=new Date(sec*1000);return d.toLocaleDateString([],{month:'short',day:'numeric'})+' '+hhmm(sec);}
+/* local "HH:MM" 24h from ISO string or unix-seconds */
+function fmtClock(t){
+  let ms;
+  if(typeof t==='number'){ms=t*1000;}
+  else{const d=new Date(t);ms=d.getTime();}
+  if(Number.isNaN(ms))return '—';
+  const d=new Date(ms);
+  const h=String(d.getHours()).padStart(2,'0');
+  const m=String(d.getMinutes()).padStart(2,'0');
+  return h+':'+m;
 }
-async function fetchRuns(){
-  try {
-    const idx = await fetchJSON('./data/forecasts/index.json');
-    return idx.runs || [];
-  } catch(e){
-    return fetchJSON('/api/runs');
-  }
-}
-async function fetchRun(runId){
-  try {
-    return await fetchJSON(`./data/forecasts/${runId}.json`);
-  } catch(e){
-    return fetchJSON(`/api/runs/${runId}`);
-  }
-}
-function showError(msg){ $('err').style.display = 'block'; $('err').textContent = msg; }
-function clearError(){ $('err').style.display = 'none'; }
-function parseTimes(times){ return times.map(t => new Date(t).getTime()); }
-
-function sliceByRange(times, values, hours){
-  if (hours === Infinity) return {times, values};
-  const end = times[0] + hours * 3600 * 1000;
-  const t = [], v = [];
-  for (let i = 0; i < times.length; i++) {
-    if (times[i] <= end) { t.push(times[i]); v.push(values[i]); }
-  }
-  return {times:t, values:v};
-}
-
-// ── shared axis helpers (one visual language across all charts) ──
-// 3-hourly vertical grid aligned to 00/03/06/09/12/15/18/21 UTC.
-const threeHourSplits = (u, axisIdx, scaleMin, scaleMax) => {
-  const step = 3 * 3600;
-  const start = Math.ceil(scaleMin / step) * step;
-  const out = [];
-  for (let t = start; t <= scaleMax; t += step) out.push(t);
+const MS=3.6; // m/s -> km/h
+/* first non-null of an array */
+function firstVal(arr){for(let i=0;i<arr.length;i++){const v=N(arr[i]);if(v!==null)return {v,i};}return {v:null,i:null};}
+/* argmax over full array, returns {v,i} */
+function argMax(arr){let m=null,idx=null;for(let i=0;i<arr.length;i++){const v=N(arr[i]);if(v!==null&&(m===null||v>m)){m=v;idx=i;}}return {v:m,i:idx};}
+function argMin(arr){let m=null,idx=null;for(let i=0;i<arr.length;i++){const v=N(arr[i]);if(v!==null&&(m===null||v<m)){m=v;idx=i;}}return {v:m,i:idx};}
+function maxNonNull(arr){return argMax(arr).v;}
+function minNonNull(arr){return argMin(arr).v;}
+/* gentle centered moving average; nulls skipped. win<=1 is a no-op. */
+function movAvgArr(arr,win){
+  if(win<=1)return arr.map(N);
+  const half=Math.floor(win/2),out=[];
+  for(let i=0;i<arr.length;i++){let s=0,c=0;
+    for(let j=i-half;j<=i+half;j++){const v=N(arr[j]);if(v!==null){s+=v;c++;}}
+    out.push(c?s/c:null);}
   return out;
-};
-// "Apr 19 16:00" on first tick of each visible day, "16:00" after.
-const timeLabels = (u, vals) => {
-  const seenDays = new Set();
-  return vals.map(v => {
-    const d = new Date(v*1000);
-    const day = d.toLocaleDateString([], {month:'short', day:'numeric'});
-    const hm  = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12:false});
-    if (!seenDays.has(day)){ seenDays.add(day); return `${day} ${hm}`; }
-    return hm;
-  });
-};
-// Pull palette from CSS custom properties so canvas drawings stay in lock-step
-// with the DOM's color system. Single source of truth: :root tokens.
-const cssVar = (name) =>
-  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || null;
-const GRID_X = 'rgba(25,34,42,0.09)';   // 3-hour anchors — stronger
-const GRID_Y = 'rgba(25,34,42,0.06)';   // minor horizontal divisions
-const AXIS_STROKE = cssVar('--text')   || '#2b3440';
-const TICK_STROKE = cssVar('--line-2') || '#c9d0db';
-
-// ── meteogram (compact multi-panel overview) ──────────
-function renderMeteogram(data){
-  const root = $('meteogram');
-  root.innerHTML = '';
-  const T = data.variables.T_2M;
-  const P = data.variables.TOT_PREC;
-  const W = data.variables.VMAX_10M;
-  if (!T && !P && !W){ return; }
-
-  const section = document.createElement('section');
-  section.className = 'meteogram';
-  section.innerHTML = `
-    <div class="mg-head">
-      <h2>Meteogram · next ${Math.round(mgHours(data))}h</h2>
-      <div class="desc">Ensemble median p50 · hover or tap to read values at any time</div>
-    </div>
-    <div class="mg-scroll">
-      <div class="mg-stack">
-        <div class="mg-panel"><div class="mg-label">Temperature <span class="unit">°C</span></div><div class="mg-chart" id="mg-temp"></div></div>
-        <div class="mg-panel"><div class="mg-label">Precipitation <span class="unit">mm/h</span></div><div class="mg-chart" id="mg-prec"></div></div>
-        <div class="mg-panel"><div class="mg-label">Rain probability <span class="unit">P(≥0.1 mm/h)</span></div><div class="mg-chart" id="mg-prob"></div></div>
-        <div class="mg-panel"><div class="mg-label">Wind gust <span class="unit">m/s</span></div><div class="mg-chart" id="mg-wind"></div></div>
-      </div>
-    </div>
-    <div class="mg-readout" id="mg-readout"></div>
-  `;
-  root.appendChild(section);
-
-  const syncKey = 'meteogram-' + data.run_id;
-  const readout = section.querySelector('#mg-readout');
-  const stash = {};    // keep last cursor values per panel for readout
-
-  const times = parseTimes((P && P.times.length ? P : (T || W)).times);
-  const xMin = times[0] / 1000;
-  const xMax = times[times.length-1] / 1000;
-
-  function commonAxes(showX, yOpts = {}){
-    return [
-      {
-        show: true,
-        stroke: showX ? AXIS_STROKE : 'transparent',
-        grid:{show:true, stroke:GRID_X, width:1},
-        ticks:{show:showX, stroke:TICK_STROKE, width:1, size:5},
-        font:'500 12px Inter, sans-serif',
-        size: showX ? 36 : 0,
-        space: 85,
-        splits: threeHourSplits,
-        values: showX ? timeLabels : (u, vals) => vals.map(() => ''),
-      },
-      {
-        stroke:AXIS_STROKE,
-        grid:{show:true, stroke:GRID_Y, width:1},
-        ticks:{stroke:TICK_STROKE, width:1, size:3},
-        font:'500 11px Inter, sans-serif',
-        size:46,
-        space: yOpts.space ?? 20,
-        ...(yOpts.splits ? {splits: yOpts.splits} : {}),
-        ...(yOpts.values ? {values: yOpts.values} : {}),
-      },
-    ];
-  }
-
-  function setReadout(){
-    const parts = [];
-    if (stash.time != null) parts.push(`<span class="time">${fmtTime(stash.time)}</span>`);
-    if (stash.temp != null) parts.push(`<span class="chip-val">${fmtNum(stash.temp,1)} °C</span>`);
-    if (stash.prec != null) parts.push(`<span class="chip-val">${fmtNum(stash.prec,2)} mm/h</span>`);
-    if (stash.prob != null) parts.push(`<span class="chip-val">${Math.round(stash.prob*100)}% rain</span>`);
-    if (stash.wind != null) parts.push(`<span class="chip-val">${fmtNum(stash.wind,1)} m/s</span>`);
-    readout.innerHTML = parts.length
-      ? parts.join('<span class="sep">·</span>')
-      : '<span class="time">hover or tap any panel</span>';
-  }
-  setReadout();
-
-  function makePanel(elId, varData, color, opts){
-    if (!varData || !varData.times.length){ return null; }
-    const el = $(elId);
-    const ts = parseTimes(varData.times).map(ms => ms/1000);
-    const p50 = varData.percentiles.p50.slice();
-    const p25 = varData.percentiles.p25 ? varData.percentiles.p25.slice() : null;
-    const p75 = varData.percentiles.p75 ? varData.percentiles.p75.slice() : null;
-
-    const showX = !!opts.showX;
-    const height = opts.height;
-    const kind = opts.kind || 'line';  // 'line' | 'bars' | 'area'
-    const fillAlpha = opts.fillAlpha ?? 0.2;
-    const rgb = opts.rgb;
-
-    let series, data, bands = [];
-    if (kind === 'bars'){
-      data = [ts, p50];
-      series = [{}, {
-        stroke: color, width: 1,
-        fill: `rgba(${rgb},0.55)`,
-        points: {show:false},
-        paths: uPlot.paths.bars({size:[0.75, 10]}),
-      }];
-    } else if (kind === 'area'){
-      data = [ts, p50];
-      series = [{}, {
-        stroke: color, width: 1.25,
-        fill: `rgba(${rgb},${fillAlpha})`,
-        points: {show:false},
-      }];
-    } else {
-      data = [ts, p25 ?? p50, p75 ?? p50, p50];
-      series = [
-        {},
-        {stroke:'transparent', points:{show:false}, label:'p25'},
-        {stroke:'transparent', points:{show:false}, label:'p75'},
-        {stroke:color, width:1.7, points:{show:false}, label:'p50'},
-      ];
-      if (p25 && p75) bands.push({series:[2,1], fill:`rgba(${rgb},${fillAlpha})`});
-    }
-
-    const plot = new uPlot({
-      width: el.clientWidth || 900,
-      height,
-      padding: [10, 12, showX ? 2 : 4, 4],
-      scales: {
-        x: {time:true, range: () => [xMin, xMax]},
-        y: opts.yRange ? {auto:false, range: opts.yRange}
-                       : {auto:true, range:(u, a, b) =>
-                            opts.allowNegative ? [a - Math.max(0.5,(b-a)*0.08), b + Math.max(0.5,(b-a)*0.08)]
-                                               : [0, Math.max(b,0.001) * 1.1]},
-      },
-      axes: commonAxes(showX, opts.yAxis || {}),
-      series, bands,
-      legend: {show:false},
-      cursor: {
-        drag:{setScale:false},
-        sync: {key: syncKey, setSeries:false},
-        points:{size:4, stroke:color, fill:'#fff', width:1.2},
-        focus:{prox:18}, x:true, y:false,
-      },
-      hooks: {
-        setCursor: [(u) => {
-          const i = u.cursor.idx;
-          if (i == null){ stash[opts.stashKey] = null; stash.time = null; setReadout(); return; }
-          stash.time = ts[i]*1000;
-          stash[opts.stashKey] = p50[i];
-          setReadout();
-        }],
-      },
-    }, data, el);
-    return plot;
-  }
-
-  makePanel('mg-temp', T, 'rgb(229,89,74)', {
-    height: 110, showX: false, kind:'line', fillAlpha: 0.18,
-    rgb: '229,89,74', stashKey:'temp', allowNegative: true,
-    yAxis: {space: 22},
-  });
-  makePanel('mg-prec', P, 'rgb(32,111,242)', {
-    height: 80, showX: false, kind:'bars',
-    rgb: '32,111,242', stashKey:'prec',
-    yAxis: {space: 22},
-  });
-  // Probability panel — derive P(≥0.1 mm/h) series
-  if (P && P.probability_exceeds && P.probability_exceeds['0.1']){
-    const probVD = {
-      times: P.times,
-      unit: '%',
-      percentiles: { p50: P.probability_exceeds['0.1'] },
-    };
-    makePanel('mg-prob', probVD, 'rgb(32,111,242)', {
-      height: 56, showX: false, kind:'area', fillAlpha: 0.28,
-      rgb: '32,111,242', stashKey:'prob',
-      yRange: () => [0, 1],
-      yAxis: {
-        splits: [0, 0.25, 0.5, 0.75, 1.0],
-        values: (u, vals) => vals.map(v => `${Math.round(v*100)}%`),
-      },
-    });
-  }
-  makePanel('mg-wind', W, 'rgb(43,70,114)', {
-    height: 110, showX: true, kind:'line', fillAlpha: 0.18,
-    rgb: '43,70,114', stashKey:'wind',
-    yAxis: {space: 22},
-  });
 }
 
-function mgHours(data){
-  const all = [];
-  for (const v of Object.values(data.variables || {})){
-    if (v && v.times && v.times.length) all.push(...v.times.map(t => new Date(t).getTime()));
-  }
-  if (!all.length) return 0;
-  return (Math.max(...all) - Math.min(...all)) / 3600000;
+const AX_STROKE='#5b6675', GRID='rgba(35,44,58,.7)', TICK='rgba(35,44,58,.9)';
+function yAxis(opts){return Object.assign({stroke:AX_STROKE,size:46,font:'11px IBM Plex Mono',
+  grid:{stroke:GRID,width:1},ticks:{stroke:TICK,width:1,size:4}},opts||{});}
+function xAxisCfg(showVals){return {stroke:AX_STROKE,font:'11px IBM Plex Mono',
+  incrs:[3600,2*3600,3*3600,6*3600,12*3600,24*3600],space:30,
+  values:showVals?hourLabels:()=>[],
+  grid:{stroke:GRID,width:1},ticks:{stroke:TICK,width:1,size:4},size:showVals?34:8};}
+
+/* ---------- global state ---------- */
+const runCache={};          // id -> run object
+let runIds=[];
+let currentId=null;
+let firstRender=true;        // entrance animation only on the first paint
+let evoVar='TOT_PREC';
+let evoSelected=[];          // run ids included in evolution
+// per-variable expand state + live uPlot instance for the answer-layer detail charts
+const detailState={TOT_PREC:false,VMAX_10M:false,T_2M:false};
+const detailCharts={TOT_PREC:null,VMAX_10M:null,T_2M:null};
+const charts={evo:null};
+
+/* =========================================================
+   STATUS BAR
+========================================================= */
+function relAge(generated_at){
+  if(!generated_at)return '—';
+  const then=new Date(generated_at).getTime();
+  if(Number.isNaN(then))return '—';
+  let mins=Math.round((Date.now()-then)/60000);
+  if(mins<0)mins=0;
+  if(mins<60)return mins+'M AGO';
+  const h=Math.floor(mins/60);if(h<24)return h+'H AGO';
+  return Math.floor(h/24)+'D AGO';
+}
+function runLabel(id){
+  // id like 2026-06-05T1200
+  const date=id.slice(0,10), hh=id.slice(11,13), mm=id.slice(13,15);
+  const d=new Date(date+'T00:00:00Z');
+  const md=Number.isNaN(d.getTime())?date:d.toLocaleDateString([],{month:'short',day:'numeric',timeZone:'UTC'});
+  return md+' · '+hh+':'+mm+' UTC';
+}
+function buildRunSwitch(){
+  const sel=document.getElementById('runSelect');
+  sel.innerHTML='';
+  runIds.forEach(id=>{const o=document.createElement('option');o.value=id;o.textContent=runLabel(id);sel.appendChild(o);});
+  sel.value=currentId;
+  sel.onchange=()=>{currentId=sel.value;renderForCurrent();};
+}
+function updateStatusBar(run){
+  document.getElementById('updAgo').textContent=relAge(run.generated_at);
+  const gd=N(run.grid_distance_km);
+  document.getElementById('gridDist').textContent=gd===null?'—':gd.toFixed(2)+' KM';
 }
 
-// ── per-variable controls ──────────────────────────────
-function ensureControls(varName, vd){
-  if (state.controls[varName]) return;
-  const thresholds = Object.keys(vd.probability_exceeds || {});
-  state.controls[varName] = { spread:'wide', threshold:thresholds[0] || null };
+/* =========================================================
+   ANSWER LAYER  (rain · temperature · wind)
+========================================================= */
+function windStrength(kmh){
+  if(kmh===null)return '';
+  if(kmh<20)return 'Calm';
+  if(kmh<39)return 'Breezy';
+  if(kmh<62)return 'Gusty';
+  if(kmh<89)return 'Strong';
+  return 'Severe';
 }
 
-function makeSegControl(label, options, accent, activeKey, onChange){
-  const el = document.createElement('div');
-  el.className = 'ctrl';
-  el.innerHTML = `<span class="ctrl-label">${label}</span>`;
-  const seg = document.createElement('div');
-  seg.className = 'seg';
-  seg.dataset.accent = accent;
-  options.forEach(opt => {
-    const b = document.createElement('button');
-    b.textContent = opt.label;
-    b.dataset.key = opt.key;
-    if (opt.key === activeKey) b.classList.add('active');
-    b.addEventListener('click', () => {
-      seg.querySelectorAll('button').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      onChange(opt.key);
-    });
-    seg.appendChild(b);
-  });
-  el.appendChild(seg);
-  return el;
+/* ---- build plain-language answers ---- */
+function rainAnswer(run){
+  const v=getVar(run,'TOT_PREC');
+  if(!v)return null;
+  const P=v.percentiles||{};
+  const p01=safeArr(v.probability_exceeds&&v.probability_exceeds['0.1']);
+  const p90=safeArr(P.p90);
+  const xs=toXs(v.times);
+  if(!p01.length)return {head:'No rain data',sub:''};
+  const pkRaw=argMax(p01); const peakProb=pkRaw.v;     // headline % = real peak
+  if(peakProb===null)return {head:'No rain data',sub:''};
+  const lastIdx=xs.length-1;
+
+  if(peakProb<0.25){
+    return {head:'No rain expected',
+      sub:'peak chance <b>'+Math.round(peakProb*100)+'%</b>'};
+  }
+
+  // 5-min precip is noisy: smooth before finding the rain window, and require
+  // a SUSTAINED dry spell to call it "eased" so a single dip can't end it early.
+  const sub5=xs.length>50;
+  const sp=movAvgArr(p01,sub5?3:1);
+  const sustain=sub5?3:1;             // ~15 min of dry for 5-min steps
+  const ONSET=0.40, EASE=0.25;
+
+  // onset on the smoothed series
+  let onset=sp.findIndex(x=>x!==null&&x>=ONSET);
+  const strong=onset>=0;
+  if(onset<0)onset=sp.findIndex(x=>x!==null&&x>=EASE);
+  if(onset<0)onset=pkRaw.i;
+
+  // end = first step after onset whose next `sustain` steps are all dry
+  const dry=i=>{const x=(i>lastIdx)?0:sp[i];return x===null||x<EASE;};
+  let endIdx=-1;
+  for(let i=onset+1;i<=lastIdx;i++){
+    let ok=true;for(let k=0;k<sustain;k++){if(!dry(i+k)){ok=false;break;}}
+    if(ok){endIdx=i;break;}
+  }
+
+  // worst-case intensity across the active window [onset .. end|last]
+  const winEnd=endIdx>=0?endIdx:lastIdx;
+  let maxRate=null;
+  for(let i=onset;i<=winEnd;i++){const r=N(p90[i]);if(r!==null&&(maxRate===null||r>maxRate))maxRate=r;}
+  const amt=maxRate!==null?' <span class="dim">·</span> up to <b>'+maxRate.toFixed(1)+'</b> mm/h':'';
+
+  if(strong){
+    const tail=endIdx>=0?'easing by <b>'+fmtClock(xs[endIdx])+'</b>'
+                        :'continuing past <b>'+fmtClock(xs[lastIdx])+'</b>';
+    return {head:'Rain likely from <span class="accent">'+fmtClock(xs[onset])+'</span> · '+tail,
+      sub:'<b>'+Math.round(peakProb*100)+'%</b> chance'+amt};
+  }
+  // light rain possible (peaked between 25% and 40%)
+  return {head:'Light rain possible around <span class="accent">'+fmtClock(xs[pkRaw.i])+'</span>',
+    sub:'<b>'+Math.round(peakProb*100)+'%</b> chance'+amt};
 }
 
-// ── detail chart block ─────────────────────────────────
-function renderBlock(parent, varName, data){
-  const meta = VAR_META[varName];
-  const vd = data.variables[varName];
-  const block = document.createElement('section');
-  block.className = 'block';
-  block.innerHTML = `
-    <div class="block-head">
-      <div>
-        <div class="block-title" data-var="${varName}">
-          <span class="accent-dot"></span>
-          <h2>${meta.label} <span class="unit">${vd ? vd.unit : ''}</span></h2>
-        </div>
-        <div class="block-desc">${meta.desc}</div>
-      </div>
-      <div class="controls" id="ctrl-${varName}"></div>
-    </div>
-    <div class="chart-wrap">
-      <div class="chart-scroll">
-        <div class="chart" id="chart-${varName}"></div>
-      </div>
-      <div class="readout" id="readout-${varName}"></div>
-    </div>
-    <div class="legend" data-var="${varName}" id="legend-${varName}"></div>
-  `;
-  parent.appendChild(block);
+function tempAnswer(run){
+  const v=getVar(run,'T_2M');
+  if(!v)return null;
+  const P=v.percentiles||{};
+  const p50=safeArr(P.p50);
+  const xs=toXs(v.times);
+  const f=firstVal(p50);
+  const nowT=f.v;
+  if(nowT===null)return {head:'No temperature data',sub:''};
+  const mx=argMax(p50), mn=argMin(p50);
+  const maxT=mx.v, maxIdx=mx.i, minT=mn.v, minIdx=mn.i;
+  const nowIdx=f.i;
 
-  if (!vd || !vd.times.length){
-    block.querySelector('.chart').innerHTML = '<div class="empty">no data for this variable</div>';
-    return;
-  }
-  ensureControls(varName, vd);
-  renderControls(varName, vd);
-  readouts[varName] = block.querySelector('.readout');
-  renderLegend(varName, vd);
-  drawChart(varName, vd);
-}
+  let head='Now <span class="now">'+Math.round(nowT)+'°</span>';
+  let subParts=[];
+  if(maxT!==null)subParts.push('High <b>'+Math.round(maxT)+'°</b> at '+fmtClock(xs[maxIdx]));
+  // low only if it occurs later than now AND is notably lower
+  if(minT!==null&&minIdx>nowIdx&&(nowT-minT)>=1.5)subParts.push('Low <b>'+Math.round(minT)+'°</b> at '+fmtClock(xs[minIdx]));
 
-function renderControls(varName, vd){
-  const c = $(`ctrl-${varName}`);
-  c.innerHTML = '';
-  const accent = VAR_META[varName].accent;
-  const cur = state.controls[varName];
-  c.appendChild(makeSegControl('Spread', SPREADS, accent, cur.spread, (k) => {
-    cur.spread = k; drawChart(varName, vd);
-  }));
-  const thresholds = Object.keys(vd.probability_exceeds || {});
-  if (thresholds.length){
-    const opts = thresholds.map(t => ({
-      key:t, label:`≥${Number(t).toFixed(Number(t)<1?1:0)}`
-    }));
-    c.appendChild(makeSegControl('Threshold', opts, accent, cur.threshold, (k) => {
-      cur.threshold = k; drawChart(varName, vd);
-    }));
-  }
-}
-
-function renderLegend(varName, vd){
-  const l = $(`legend-${varName}`);
-  const cur = state.controls[varName];
-  let html = '';
-  if (cur.spread === 'wide'){
-    html += `<span><span class="sw outer"></span>P10–P90 range</span>`;
-    html += `<span><span class="sw inner"></span>P25–P75 interquartile</span>`;
-  } else if (cur.spread === 'inner'){
-    html += `<span><span class="sw inner"></span>P25–P75 interquartile</span>`;
-  }
-  html += `<span><span class="sw median"></span>P50 median</span>`;
-  if (cur.threshold){
-    html += `<span><span class="sw threshold"></span>threshold ≥${cur.threshold} ${vd.unit}</span>`;
-  }
-  l.innerHTML = html;
-}
-
-// ── detail uPlot chart ─────────────────────────────────
-function drawChart(varName, vd){
-  const el = $(`chart-${varName}`);
-  el.innerHTML = '';
-  const cur = state.controls[varName];
-  const meta = VAR_META[varName];
-
-  // Always render the full forecast horizon — chart scrolls horizontally
-  // via the wrapping .chart-scroll if the viewport is narrower.
-  const times = parseTimes(vd.times);
-  const sliced = {};
-  for (const pct of ['p10','p25','p50','p75','p90']){
-    sliced[pct] = vd.percentiles[pct];
-  }
-  const t = times.map(ms => ms/1000);
-
-  const accent = `rgb(${meta.rgb})`;
-  const outer4 = `rgba(${meta.rgb},0.14)`;
-  const inner3 = `rgba(${meta.rgb},0.32)`;
-  const glow   = `rgba(${meta.rgb},0.2)`;
-
-  const data = [t, sliced.p10, sliced.p90, sliced.p25, sliced.p75, sliced.p50];
-  const series = [
-    {},
-    {stroke:'transparent', points:{show:false}, label:'p10', show: cur.spread === 'wide'},
-    {stroke:'transparent', points:{show:false}, label:'p90', show: cur.spread === 'wide'},
-    {stroke:'transparent', points:{show:false}, label:'p25', show: cur.spread !== 'median'},
-    {stroke:'transparent', points:{show:false}, label:'p75', show: cur.spread !== 'median'},
-    {stroke:accent, width:2.0, points:{show:false}, label:'p50'},
-  ];
-  const bands = [];
-  if (cur.spread === 'wide') bands.push({series:[2,1], fill:outer4});
-  if (cur.spread !== 'median') bands.push({series:[4,3], fill:inner3});
-
-  const thresholdVal = cur.threshold ? Number(cur.threshold) : null;
-  const probs = vd.probability_exceeds || {};
-  const probSeries = cur.threshold ? (probs[cur.threshold] || null) : null;
-
-  const opts = {
-    width: el.clientWidth || 900,
-    height: 340,
-    padding: [14, 60, 10, 10],
-    scales: {
-      x:{time:true},
-      y:{auto:true, range:(u, dmin, dmax) => {
-        const hasThresh = thresholdVal != null;
-        if (meta.allowNegative){
-          // Pad symmetrically around data; include threshold if set
-          let lo = Math.min(dmin, hasThresh ? thresholdVal : dmin);
-          let hi = Math.max(dmax, hasThresh ? thresholdVal : dmax);
-          const pad = Math.max((hi - lo) * 0.08, 0.5);
-          return [lo - pad, hi + pad];
-        }
-        const top = Math.max(dmax, hasThresh ? thresholdVal : 0);
-        return [0, top * 1.05 + 0.001];
-      }},
-    },
-    axes: [
-      axisOpts({withDayLabel:true}),
-      axisOpts({side:1, unit:vd.unit}),
-    ],
-    series, bands,
-    legend:{show:false},
-    cursor:{
-      drag:{setScale:false},
-      points:{size:6, stroke:accent, fill:'#ffffff', width:1.5},
-      focus:{prox:18}, x:true, y:false,
-    },
-    hooks: {
-      draw: [
-        (u) => {
-          // p50 glow
-          const xs = u.data[0], ys = u.data[5];
-          if (!xs || !ys || !xs.length) return;
-          const ctx = u.ctx;
-          ctx.save(); ctx.beginPath();
-          ctx.strokeStyle = glow;
-          ctx.lineWidth = 5;
-          ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-          let started = false;
-          for (let i = 0; i < xs.length; i++){
-            if (ys[i] == null) { started = false; continue; }
-            const x = u.valToPos(xs[i], 'x', true);
-            const y = u.valToPos(ys[i], 'y', true);
-            if (!started) { ctx.moveTo(x, y); started = true; }
-            else { ctx.lineTo(x, y); }
-          }
-          ctx.stroke(); ctx.restore();
-        },
-        (u) => {
-          if (thresholdVal == null) return;
-          const ctx = u.ctx;
-          const yPos = u.valToPos(thresholdVal, 'y', true);
-          if (Number.isNaN(yPos)) return;
-          ctx.save(); ctx.beginPath();
-          ctx.strokeStyle = '#ffc800';
-          ctx.setLineDash([4,3]); ctx.lineWidth = 1.25;
-          ctx.moveTo(u.bbox.left, yPos);
-          ctx.lineTo(u.bbox.left + u.bbox.width, yPos);
-          ctx.stroke(); ctx.setLineDash([]);
-          ctx.font = '600 13px Inter, sans-serif';
-          ctx.fillStyle = '#6b5400';
-          ctx.textAlign = 'right';
-          ctx.fillText(`≥${thresholdVal} ${vd.unit}`, u.bbox.left + u.bbox.width - 4, yPos - 7);
-          ctx.restore();
-        }
-      ],
-      setCursor: [
-        (u) => {
-          const i = u.cursor.idx;
-          if (i == null) { renderReadout(varName, null, vd, probSeries); return; }
-          renderReadout(varName, {
-            time: t[i]*1000,
-            p10: sliced.p10[i], p25: sliced.p25[i], p50: sliced.p50[i],
-            p75: sliced.p75[i], p90: sliced.p90[i],
-            prob: probSeries ? probSeries[i] : null,
-          }, vd, probSeries);
-        }
-      ],
-    },
-  };
-
-  if (plots[varName]) { try { plots[varName].destroy(); } catch(e){} }
-  plots[varName] = new uPlot(opts, data, el);
-  renderLegend(varName, vd);
-  renderReadout(varName, null, vd, probSeries);
-}
-
-function isNarrow(){ return window.innerWidth < 720; }
-
-// Unified axis styling for every chart on the page (meteogram, detail, evolution).
-// Same 3-hourly vertical grid, same finer horizontal grid, same palette + fonts.
-function axisOpts({side=0, withDayLabel=false, unit=null} = {}){
-  const narrow = isNarrow();
-  if (side === 1){
-    // No rotated unit label — the unit is already shown in the panel/block
-    // title and in the hover readout. Keeps the axis tight.
-    return {
-      stroke: AXIS_STROKE,
-      grid:{show:true, stroke:GRID_Y, width:1},
-      ticks:{stroke:TICK_STROKE, width:1, size:4},
-      font:`500 ${narrow ? 11 : 13}px Inter, sans-serif`,
-      size: narrow ? 34 : 42,
-      space: 20,
-    };
-  }
-  const base = {
-    stroke: AXIS_STROKE,
-    grid:{show:true, stroke:GRID_X, width:1},
-    ticks:{stroke:TICK_STROKE, width:1, size:5},
-    font:`500 ${narrow ? 12 : 14}px Inter, sans-serif`,
-    size: narrow ? 42 : 54,
-    gap: narrow ? 6 : 8,
-    space: narrow ? 95 : 85,
-    splits: threeHourSplits,
-  };
-  if (withDayLabel){
-    base.values = timeLabels;
-  }
-  return base;
-}
-
-function renderReadout(varName, row, vd, probSeries){
-  const el = readouts[varName];
-  if (!el) return;
-  const cur = state.controls[varName];
-  if (!row){
-    el.innerHTML = `
-      <span class="time">hover chart for values</span>
-      <span class="sep">·</span>
-      <span class="key">spread</span>
-      <span class="val">${(SPREADS.find(s=>s.key===cur.spread)||{}).label}</span>
-      ${cur.threshold ? `<span class="sep">·</span><span class="key">threshold</span><span class="val">≥${cur.threshold} ${vd.unit}</span>` : ''}
-    `;
-    return;
-  }
-  let html = `<span class="time">${fmtTime(row.time)}</span><span class="sep">·</span>`;
-  html += `<span class="key">p50</span><span class="val">${fmtNum(row.p50, 2)} ${vd.unit}</span>`;
-  if (cur.spread !== 'median'){
-    html += `<span class="sep">·</span><span class="key">p25–p75</span>`;
-    html += `<span class="val">${fmtNum(row.p25, 2)} → ${fmtNum(row.p75, 2)}</span>`;
-  }
-  if (cur.spread === 'wide'){
-    html += `<span class="sep">·</span><span class="key">p10–p90</span>`;
-    html += `<span class="val">${fmtNum(row.p10, 2)} → ${fmtNum(row.p90, 2)}</span>`;
-  }
-  if (cur.threshold && row.prob != null){
-    const pct = Math.round(row.prob * 100);
-    const color = pct >= 50 ? 'var(--sun-ink)' : 'var(--ink)';
-    html += `<span class="sep">·</span>`;
-    html += `<span class="key">P(≥${cur.threshold})</span><span class="val" style="color:${color}">${pct}%</span>`;
-  }
-  el.innerHTML = html;
-}
-
-// ── evolution ──────────────────────────────────────────
-function shadeFor(rgb, i, n){
-  const alpha = n <= 1 ? 1.0 : 1.0 - (i / (n - 1)) * 0.7;
-  return `rgba(${rgb},${alpha.toFixed(3)})`;
-}
-
-function renderEvolution(){
-  const root = $('evolution');
-  root.innerHTML = '';
-  if (!state.runs.length) return;
-  const selectedRuns = [...state.runs].filter(r => state.evolutionSelected.has(r));
-
-  const head = document.createElement('div');
-  head.className = 'evolution-head';
-  head.innerHTML = `
-    <div>
-      <div class="title">Forecast Evolution</div>
-      <div class="desc">P50 median across recent runs — newer runs shown darker; click chips to toggle</div>
-    </div>
-    <div class="chip-actions">
-      <button class="chip-action" id="evAll">All</button>
-      <button class="chip-action" id="evNone">None</button>
-      <button class="chip-action" id="evLast4">Last 4</button>
-    </div>
-  `;
-  root.appendChild(head);
-
-  for (const [varName, meta] of Object.entries(VAR_META)){
-    const section = document.createElement('section');
-    section.className = 'block';
-    const unit = state.data?.variables?.[varName]?.unit || '';
-    section.innerHTML = `
-      <div class="block-head">
-        <div>
-          <div class="block-title" data-var="${varName}">
-            <span class="accent-dot"></span>
-            <h2>${meta.label} · run evolution <span class="unit">${unit}</span></h2>
-          </div>
-          <div class="block-desc">P50 median from each selected run</div>
-        </div>
-      </div>
-      <div class="run-chips" id="chips-${varName}"></div>
-      <div class="chart-wrap">
-        <div class="chart-scroll">
-          <div class="chart" id="evchart-${varName}"></div>
-        </div>
-      </div>
-    `;
-    root.appendChild(section);
-
-    renderChips(varName, selectedRuns);
-    drawEvolutionChart(varName, selectedRuns);
-  }
-
-  head.querySelector('#evAll').addEventListener('click', () => {
-    state.evolutionSelected = new Set(state.runs);
-    renderEvolution();
-  });
-  head.querySelector('#evNone').addEventListener('click', () => {
-    state.evolutionSelected = new Set();
-    renderEvolution();
-  });
-  head.querySelector('#evLast4').addEventListener('click', () => {
-    state.evolutionSelected = new Set(state.runs.slice(0, 4));
-    renderEvolution();
-  });
-}
-
-function renderChips(varName, selectedRuns){
-  const el = $(`chips-${varName}`);
-  const meta = VAR_META[varName];
-  el.innerHTML = '';
-  const N = selectedRuns.length;
-  state.runs.forEach(runId => {
-    const chip = document.createElement('button');
-    chip.className = 'chip';
-    chip.dataset.accent = meta.accent;
-    const isActive = state.evolutionSelected.has(runId);
-    if (isActive) chip.classList.add('active');
-    const idxInSelected = selectedRuns.indexOf(runId);
-    const dotColor = isActive && idxInSelected >= 0
-      ? shadeFor(meta.rgb, idxInSelected, N)
-      : 'var(--line-2)';
-    chip.innerHTML = `
-      <span class="chip-dot" style="background:${dotColor}"></span>
-      ${fmtRunShort(runId)}
-    `;
-    chip.addEventListener('click', () => {
-      if (state.evolutionSelected.has(runId)) state.evolutionSelected.delete(runId);
-      else state.evolutionSelected.add(runId);
-      renderEvolution();
-    });
-    el.appendChild(chip);
-  });
-}
-
-function drawEvolutionChart(varName, selectedRuns){
-  const el = $(`evchart-${varName}`);
-  el.innerHTML = '';
-  if (evolutionPlots[varName]) { try { evolutionPlots[varName].destroy(); } catch(e){} }
-  if (!selectedRuns.length){
-    el.innerHTML = '<div class="empty">select at least one run above to see evolution</div>';
-    return;
-  }
-
-  const meta = VAR_META[varName];
-  const timelineSet = new Set();
-  const perRun = [];
-  for (const runId of selectedRuns){
-    const vd = state.allRuns[runId]?.variables[varName];
-    if (!vd || !vd.times.length) { perRun.push({runId, map:null}); continue; }
-    const map = new Map();
-    for (let i = 0; i < vd.times.length; i++){
-      const t = new Date(vd.times[i]).getTime() / 1000;
-      timelineSet.add(t);
-      map.set(t, vd.percentiles.p50[i]);
-    }
-    perRun.push({runId, map, unit: vd.unit});
-  }
-  if (timelineSet.size === 0){
-    el.innerHTML = '<div class="empty">no data for selected runs</div>';
-    return;
-  }
-  const timeline = [...timelineSet].sort((a,b) => a - b);
-
-  const data = [timeline];
-  const series = [{}];
-  const unit = perRun.find(r => r.unit)?.unit || '';
-  const N = selectedRuns.length;
-  perRun.forEach((r, i) => {
-    const vals = timeline.map(t => r.map ? (r.map.has(t) ? r.map.get(t) : null) : null);
-    data.push(vals);
-    const color = shadeFor(meta.rgb, i, N);
-    series.push({
-      stroke: color,
-      width: i === 0 ? 2.0 : 1.35,
-      points: {show:false},
-      label: fmtRunShort(r.runId),
-      spanGaps: false,
-    });
-  });
-
-  const meta2 = VAR_META[varName];
-  const opts = {
-    width: el.clientWidth || 900,
-    height: 340,
-    padding: [14, 60, 10, 10],
-    scales: {
-      x:{time:true},
-      y:{auto:true, range:(u, dmin, dmax) => {
-        if (meta2.allowNegative){
-          const pad = Math.max((dmax - dmin) * 0.08, 0.5);
-          return [dmin - pad, dmax + pad];
-        }
-        return [0, Math.max(dmax, 0.001) * 1.05];
-      }},
-    },
-    axes: [
-      axisOpts({withDayLabel:true}),
-      axisOpts({side:1, unit}),
-    ],
-    series,
-    legend:{show:false},
-    cursor:{
-      drag:{setScale:false},
-      points:{size:5, fill:'#ffffff', width:1.5},
-      focus:{prox:18}, x:true, y:false,
-    },
-  };
-  evolutionPlots[varName] = new uPlot(opts, data, el);
-}
-
-// ── forecast summary (TTS-friendly) ────────────────────
-function buildSummary(data){
-  const tz = data?.timezone || 'Europe/Bratislava';
-  const fmtHour = (iso) => {
-    const s = new Date(iso).toLocaleString('en-US', {
-      timeZone:tz, hour:'numeric', hour12:true,
-    });
-    return s.replace(' ', '').toLowerCase();
-  };
-  const fmtDayHour = (iso) => new Date(iso).toLocaleString('en-GB', {
-    timeZone:tz, weekday:'short', hour:'numeric', hour12:false,
-  });
-  const now = Date.now();
-  const HORIZON_H = 12;
-  const horizonEnd = now + HORIZON_H * 3600 * 1000;
-
-  // Slice a variable's series to the next HORIZON_H hours (from now).
-  const slice = (vd) => {
-    if (!vd || !vd.times || !vd.times.length) return null;
-    const idx = [];
-    for (let i = 0; i < vd.times.length; i++){
-      const t = new Date(vd.times[i]).getTime();
-      if (t >= now - 3600*1000 && t <= horizonEnd) idx.push(i);
-    }
-    if (!idx.length) return null;
-    const pick = (arr) => idx.map(i => arr[i]);
-    return {
-      idx,
-      times: pick(vd.times),
-      p50: vd.percentiles ? pick(vd.percentiles.p50) : null,
-      p90: vd.percentiles ? pick(vd.percentiles.p90) : null,
-      p10: vd.percentiles ? pick(vd.percentiles.p10) : null,
-      prob: vd.probability_exceeds || {},
-      probSlice: (thr) => vd.probability_exceeds && vd.probability_exceeds[thr]
-        ? pick(vd.probability_exceeds[thr]) : null,
-    };
-  };
-
-  const T = slice(data.variables.T_2M);
-  const P = slice(data.variables.TOT_PREC);
-  const W = slice(data.variables.VMAX_10M);
-
-  const parts = [];
-
-  // Temperature — min/max of p50 across horizon, plus unit.
-  if (T && T.p50 && T.p50.length){
-    let tmin = Infinity, tmax = -Infinity, tminI = 0, tmaxI = 0;
-    T.p50.forEach((v, i) => {
-      if (v == null) return;
-      if (v < tmin){ tmin = v; tminI = i; }
-      if (v > tmax){ tmax = v; tmaxI = i; }
-    });
-    const unit = data.variables.T_2M.unit === 'K' ? 'K' : '°C';
-    const toC = (v) => data.variables.T_2M.unit === 'K' ? v - 273.15 : v;
-    const lo = Math.round(toC(tmin));
-    const hi = Math.round(toC(tmax));
-    if (lo === hi){
-      parts.push(`Temperature around ${lo}°C.`);
-    } else {
-      parts.push(`Temperatures between ${lo} and ${hi}°C, coldest around ${fmtHour(T.times[tminI])} and warmest around ${fmtHour(T.times[tmaxI])}.`);
+  // trend ~+6h ahead. T_2M is hourly (step_minutes 60) -> +6 indices, else last.
+  let trendIdx=nowIdx+6;
+  if(trendIdx>xs.length-1)trendIdx=xs.length-1;
+  const trendVal=N(p50[trendIdx]);
+  if(trendVal!==null&&trendIdx!==nowIdx){
+    const delta=trendVal-nowT;
+    if(Math.abs(delta)>=1.5){
+      const dir=delta>0?'rising':'falling';
+      subParts.push(dir+' <b>'+Math.abs(Math.round(delta))+'°</b> by '+fmtClock(xs[trendIdx]));
     }
   }
+  return {head:head,sub:subParts.join(' <span class="dim">·</span> ')};
+}
 
-  // Precipitation — look for hours where prob of >0.1 mm/h is meaningful.
-  if (P){
-    const pLight = P.probSlice('0.1') || [];
-    const pModerate = P.probSlice('1.0') || [];
-    const pHeavy = P.probSlice('5.0') || [];
-    const maxLight = Math.max(0, ...pLight.map(v => v || 0));
-    const maxMod = Math.max(0, ...pModerate.map(v => v || 0));
-    const maxHeavy = Math.max(0, ...pHeavy.map(v => v || 0));
-    const peakRate = P.p90 ? Math.max(0, ...P.p90.map(v => v || 0)) : 0;
+function windAnswer(run){
+  const v=getVar(run,'VMAX_10M');
+  if(!v)return null;
+  const P=v.percentiles||{};
+  const p50=safeArr(P.p50), p90=safeArr(P.p90);
+  const xs=toXs(v.times);
+  const f=firstVal(p50);
+  const nowG=f.v;
+  const pk=argMax(p50); const peakG=pk.v, peakIdx=pk.i;
+  if(peakG===null)return {head:'No wind data',sub:''};
+  const peakKmh=peakG*MS;
+  const nowKmh=nowG===null?null:nowG*MS;
+  const strength=windStrength(nowKmh!==null?nowKmh:peakKmh);
 
-    if (maxLight < 0.15){
-      parts.push('Staying dry.');
-    } else {
-      // Onset: first hour where light-rain probability reaches a meaningful level.
-      let onsetIdx = pLight.findIndex(v => (v || 0) >= 0.3);
-      if (onsetIdx < 0) onsetIdx = pLight.findIndex(v => (v || 0) >= 0.15);
-      const onsetTime = onsetIdx >= 0 ? fmtHour(P.times[onsetIdx]) : null;
+  const head='Gusts to <span class="accent">'+Math.round(peakKmh)+' km/h</span> around '
+    +fmtClock(xs[peakIdx])+' <span class="dim">('+peakG.toFixed(1)+' m/s)</span>';
+  let sub='';
+  if(nowKmh!==null)sub='Now <b>'+Math.round(nowKmh)+' km/h</b> <span class="dim">·</span> '+strength;
+  else sub=strength;
+  return {head:head,sub:sub};
+}
 
-      // Peak-probability window: longest/first run of hours with high rain chance.
-      const peakProbIdx = pLight.reduce((best, v, i) =>
-        (v || 0) > (pLight[best] || 0) ? i : best, 0);
-      const peakProbTime = fmtHour(P.times[peakProbIdx]);
+/* ---- render the three readout panels + expanders ---- */
+const ANSWER_FNS={TOT_PREC:rainAnswer,T_2M:tempAnswer,VMAX_10M:windAnswer};
+// answer-layer order: Rain, Temperature, Wind
+const ANSWER_ORDER=['TOT_PREC','T_2M','VMAX_10M'];
 
-      const chancePct = Math.round(maxLight * 100);
-      let intensity, intensityPct;
-      if (maxHeavy >= 0.2){
-        intensity = 'Heavy rain possible';
-        intensityPct = `${Math.round(maxHeavy*100)}% chance of 5 mm per hour or more`;
-      } else if (maxMod >= 0.3){
-        intensity = 'Rain likely';
-        intensityPct = `${Math.round(maxMod*100)}% chance of 1 mm per hour or more`;
-      } else {
-        intensity = 'Light rain possible';
-        intensityPct = `${chancePct}% chance of measurable rain`;
+function renderAnswers(run){
+  // destroy any live detail charts before rebuilding
+  VAR_ORDER.forEach(vk=>{
+    if(detailCharts[vk]){try{detailCharts[vk].destroy();}catch(e){}detailCharts[vk]=null;}
+  });
+  const host=document.getElementById('answers');host.innerHTML='';
+
+  ANSWER_ORDER.forEach((vk,idx)=>{
+    const m=VARS[vk];
+    const present=!!getVar(run,vk);
+    const ans=present?ANSWER_FNS[vk](run):null;
+
+    const panel=document.createElement('div');
+    panel.className='readout-panel'+(firstRender?' anim':'');
+    panel.dataset.vk=vk;
+    panel.style.setProperty('--accent',m.accent);
+    if(firstRender)panel.style.animationDelay=(0.04+idx*0.06).toFixed(2)+'s';
+
+    if(!present||!ans){
+      panel.classList.add('rp-miss');
+      panel.innerHTML=
+        '<div class="rp-body"><div class="rp-top"><span class="rp-tag">'+m.label+'</span></div>'
+        +'<div class="rp-head">not available</div></div>';
+      host.appendChild(panel);
+      return;
+    }
+
+    panel.innerHTML=
+      '<div class="rp-body">'
+        +'<div class="rp-top"><span class="rp-tag">'+m.label+'</span><span class="rp-unit">'+m.unit+'</span></div>'
+        +'<div class="rp-head">'+ans.head+'</div>'
+        +(ans.sub?'<div class="rp-sub">'+ans.sub+'</div>':'')
+      +'</div>'
+      +'<button class="rp-expander" aria-expanded="'+(detailState[vk]?'true':'false')+'">'
+        +'<span class="rp-caret">▾</span><span>DETAIL</span></button>'
+      +'<div class="rp-detail'+(detailState[vk]?' open':'')+'">'
+        +'<div class="readout"><span class="dim">Hover the chart for values</span></div>'
+        +'<div class="rp-chart"></div>'
+      +'</div>';
+    host.appendChild(panel);
+
+    const btn=panel.querySelector('.rp-expander');
+    const det=panel.querySelector('.rp-detail');
+    const chartHost=panel.querySelector('.rp-chart');
+    const ro=panel.querySelector('.readout');
+
+    btn.addEventListener('click',()=>{
+      const open=!detailState[vk];
+      detailState[vk]=open;
+      btn.setAttribute('aria-expanded',open?'true':'false');
+      det.classList.toggle('open',open);
+      if(open){
+        renderDetailChart(vk,run,chartHost,ro);
+      }else if(detailCharts[vk]){
+        try{detailCharts[vk].destroy();}catch(e){}detailCharts[vk]=null;
       }
+    });
 
-      let line = `${intensity} — ${intensityPct}`;
-      if (onsetTime && onsetTime !== peakProbTime){
-        line += `, starting around ${onsetTime} and peaking near ${peakProbTime}`;
-      } else if (onsetTime){
-        line += `, starting around ${onsetTime}`;
-      }
-      if (peakRate >= 0.2) line += `, peak intensity near ${peakRate.toFixed(1)} mm per hour`;
-      parts.push(line + '.');
-    }
-  }
-
-  // Wind gusts — max p50 and p90, converted to km/h (more intuitive than m/s for TTS).
-  if (W && W.p50 && W.p50.length){
-    const peakMed = Math.max(0, ...W.p50.map(v => v || 0));
-    const peakHigh = W.p90 ? Math.max(0, ...W.p90.map(v => v || 0)) : peakMed;
-    const peakIdx = W.p50.indexOf(peakMed);
-    const peakKmh = Math.round(peakMed * 3.6);
-    const peakHighKmh = Math.round(peakHigh * 3.6);
-    if (peakHighKmh >= 70){
-      parts.push(`Strong wind gusts up to ${peakHighKmh} km/h around ${fmtHour(W.times[peakIdx])}.`);
-    } else if (peakKmh >= 40){
-      parts.push(`Gusty winds, peaking near ${peakKmh} km/h around ${fmtHour(W.times[peakIdx])}.`);
-    } else if (peakKmh >= 20){
-      parts.push(`Light breeze, gusts up to ${peakKmh} km/h.`);
-    } else {
-      parts.push('Calm winds.');
-    }
-  }
-
-  if (!parts.length) return null;
-
-  const h = new Date().toLocaleString('en-GB', {timeZone:tz, hour:'numeric', hour12:false});
-  const hour = parseInt(h, 10);
-  let greeting = '';
-  if (hour >= 4 && hour < 11) greeting = 'Good morning. ';
-
-  return `${greeting}${parts.join(' ')}`;
+    // if it was already expanded (e.g. run switch), render now
+    if(detailState[vk])renderDetailChart(vk,run,chartHost,ro);
+  });
+  firstRender=false;
 }
 
-function renderSummary(data){
-  const box = $('summary');
-  const text = $('summaryText');
-  const eyebrow = $('summaryEyebrow');
-  const summary = buildSummary(data);
-  if (!summary){
-    box.style.display = 'none';
-    return;
+/* ---- expandable per-variable ensemble chart ---- */
+/* p50 median + p25–p75 band + p10–p90 (fainter) band. Wind in km/h. */
+function renderDetailChart(vk,run,host,ro){
+  if(detailCharts[vk]){try{detailCharts[vk].destroy();}catch(e){}detailCharts[vk]=null;}
+  if(!host)return;
+  host.innerHTML='';
+  const m=VARS[vk];const v=getVar(run,vk);
+  if(!v){host.innerHTML='<div class="miss">Variable not available in this run.</div>';if(ro)ro.innerHTML='';return;}
+  const width=host.clientWidth||(document.querySelector('.wrap').clientWidth-32);
+  const xs=toXs(v.times);const P=v.percentiles||{};
+  const scale=(vk==='VMAX_10M')?MS:1; // wind -> km/h
+  const conv=a=>safeArr(a).map(x=>{x=N(x);return x===null?null:x*scale;});
+  const p10=conv(P.p10),p90=conv(P.p90),p25=conv(P.p25),p75=conv(P.p75),p50=conv(P.p50);
+  const accent=ACCENT_HEX[vk];const rgb=m.rgb;
+  const unit=(vk==='VMAX_10M')?'km/h':m.unit;
+  const dp=(vk==='VMAX_10M')?0:m.dp;
+
+  // series: x, p10, p90, p25, p75, p50  with two bands
+  const data=[xs,p10,p90,p25,p75,p50];
+  const series=[{},
+    {stroke:'transparent',points:{show:false}},
+    {stroke:'transparent',points:{show:false}},
+    {stroke:'transparent',points:{show:false}},
+    {stroke:'transparent',points:{show:false}},
+    {stroke:accent,width:2.2,points:{show:false}}];
+  const bands=[{series:[2,1],fill:'rgba('+rgb+',.10)'},   // p10–p90 fainter
+               {series:[4,3],fill:'rgba('+rgb+',.20)'}];  // p25–p75
+
+  // y-axis: precip & wind -> [0, max(1, maxP90+1)]; temp -> padded
+  let yScale;
+  if(m.clamp){
+    const maxP90=(maxNonNull(p90)!==null?maxNonNull(p90):maxNonNull(p50));
+    const top=Math.max(1,(maxP90===null?0:maxP90)+1);
+    yScale={range:()=>[0,top]};
+  }else{
+    const dispMax=maxNonNull(p90)!==null?maxNonNull(p90):maxNonNull(p50);
+    const dispMin=minNonNull(p10)!==null?minNonNull(p10):minNonNull(p50);
+    if(dispMax!==null&&dispMin!==null){
+      const pad=Math.max(1,(dispMax-dispMin)*0.1);
+      yScale={range:[dispMin-pad,dispMax+pad]};
+    }else yScale={};
   }
-  text.textContent = summary;
-  eyebrow.textContent = `Forecast summary · next 12 hours · run ${fmtRunLabel(data.run_id)}`;
-  box.style.display = '';
+
+  function syncReadout(i){
+    if(!ro)return;
+    if(i==null){ro.innerHTML='<span class="dim">Hover the chart for values</span>';return;}
+    const parts=['<span class="time">'+dayhm(xs[i])+'</span>'];
+    parts.push('<span style="color:'+accent+'">p50 '+fmt(p50[i],dp)+' '+unit+'</span>');
+    if(p25.length&&p75.length)parts.push('<span class="dim">p25–75 '+fmt(p25[i],dp)+'–'+fmt(p75[i],dp)+'</span>');
+    if(p10.length&&p90.length)parts.push('<span class="dim">p10–90 '+fmt(p10[i],dp)+'–'+fmt(p90[i],dp)+'</span>');
+    ro.innerHTML=parts.join('<span class="dim">·</span>');
+  }
+
+  const opts={
+    width:width,height:260,
+    cursor:{x:true,y:true,points:{show:false},drag:{x:false,y:false}},
+    legend:{show:false},
+    scales:{x:{time:false},y:yScale},
+    axes:[xAxisCfg(true),yAxis({values:(u,vals)=>vals.map(x=>x.toFixed(dp===2?1:0))})],
+    series:series,
+    bands:bands,
+    padding:[12,12,2,0],
+    hooks:{setCursor:[(u)=>{syncReadout(u.cursor.idx);}]}
+  };
+  detailCharts[vk]=new uPlot(opts,data,host);
 }
 
-// ── orchestration ──────────────────────────────────────
-async function loadRun(runId){
-  clearError();
-  try {
-    let data = state.allRuns[runId];
-    if (!data) {
-      data = await fetchRun(runId);
-      state.allRuns[runId] = data;
-    }
-    state.data = data;
-    state.controls = {};
+/* =========================================================
+   RUN EVOLUTION
+========================================================= */
+/* run a re-render without letting the viewport jump: rebuilding controls or the
+   chart can make mobile browsers scroll (focus loss / relayout). Pin scroll now
+   and again next frame to swallow any async scroll-into-view. */
+function keepScroll(fn){
+  const x=window.scrollX,y=window.scrollY;
+  fn();
+  window.scrollTo(x,y);
+  requestAnimationFrame(()=>window.scrollTo(x,y));
+}
+function buildEvoSeg(){
+  const host=document.getElementById('evoSeg');host.innerHTML='';
+  VAR_ORDER.forEach(vk=>{
+    const b=document.createElement('button');b.textContent=VARS[vk].label;b.dataset.vk=vk;
+    if(vk===evoVar)b.classList.add('active');
+    b.onclick=()=>{evoVar=vk;[...host.children].forEach(c=>c.classList.toggle('active',c.dataset.vk===vk));keepScroll(()=>{renderEvo();buildEvoChips();});};
+    host.appendChild(b);
+  });
+}
+function buildEvoChips(){
+  const host=document.getElementById('evoChips');host.innerHTML='';
+  const accent=ACCENT_HEX[evoVar];
+  runIds.forEach(id=>{
+    const c=document.createElement('button');c.className='chip';c.textContent=runLabel(id);
+    if(evoSelected.includes(id)){c.classList.add('on');c.style.setProperty('--accent',accent);}
+    c.onclick=()=>{
+      const i=evoSelected.indexOf(id);
+      // toggle this chip in place (don't rebuild all chips -> keeps focus, no jump)
+      if(i>=0){evoSelected.splice(i,1);c.classList.remove('on');c.style.removeProperty('--accent');}
+      else{evoSelected.push(id);c.classList.add('on');c.style.setProperty('--accent',accent);}
+      keepScroll(renderEvo);
+    };
+    host.appendChild(c);
+  });
+}
+function renderEvo(){
+  if(charts.evo){try{charts.evo.destroy();}catch(e){}charts.evo=null;}
+  if(!evoOpen)return; // no live instance while collapsed
+  const host=document.getElementById('evoChart');host.innerHTML='';
+  const ro=document.getElementById('evoReadout');
+  const m=VARS[evoVar];const accent=ACCENT_HEX[evoVar];
+  const scale=(evoVar==='VMAX_10M')?MS:1;          // wind -> km/h everywhere
+  const edp=(evoVar==='VMAX_10M')?0:m.dp;
+  // ordered newest-first among selected, that are actually loaded
+  const sel=runIds.filter(id=>evoSelected.includes(id)&&runCache[id]&&getVar(runCache[id],evoVar));
+  if(!sel.length){host.innerHTML='<div class="miss">No runs selected (or variable missing).</div>';ro.innerHTML='';return;}
+  const width=host.clientWidth||document.querySelector('.wrap').clientWidth-32;
 
-    // Update location from data
-    if (data.location) {
-      const locName = data.location.name || 'Location';
-      const coords = formatCoords(data.location.lat, data.location.lon);
-      $('locationName').textContent = locName;
-      $('locationCoords').textContent = coords;
-      $('pageTitle').textContent = `ICON-D2-RUC-EPS · ${locName}`;
-    }
+  // common x grid from the newest selected run
+  const baseRun=runCache[sel[0]];const baseV=getVar(baseRun,evoVar);
+  const baseXs=toXs(baseV.times);
+  // build per-run interpolated/aligned p50 to base time index by nearest time
+  const seriesData=[baseXs];
+  const seriesCfg=[{}];
+  const labels=[];
+  sel.forEach((id,idx)=>{
+    const v=getVar(runCache[id],evoVar);
+    const xs=toXs(v.times);const p50=safeArr(v.percentiles&&v.percentiles.p50);
+    // map base xs -> nearest p50 of this run (only where within reach)
+    const aligned=baseXs.map(bx=>{
+      let best=null,bd=Infinity;
+      for(let i=0;i<xs.length;i++){const d=Math.abs(xs[i]-bx);if(d<bd){bd=d;best=i;}}
+      // step interval guard: for hourly data accept up to 90min, for 5-min accept 8min
+      const tol=(xs.length>50)?(8*60):(95*60);
+      const raw=(best!==null&&bd<=tol)?N(p50[best]):null;
+      return raw===null?null:raw*scale;
+    });
+    seriesData.push(aligned);
+    const newest=idx===0;
+    const alpha=Math.max(0.18,1-idx*0.22);
+    seriesCfg.push({stroke:'rgba('+m.rgb+','+alpha.toFixed(2)+')',
+      width:newest?2.6:1.4,points:{show:false}});
+    labels.push(id);
+  });
 
-    $('brandSub').textContent = `nearest grid cell ${fmtNum(data.grid_distance_km, 2)} km from target`;
-    $('age').textContent = fmtAge(data.generated_at);
-    $('footerRight').textContent = `run ${fmtRunLabel(runId)} · generated ${data.generated_at}`;
-
-    renderSummary(data);
-    renderMeteogram(data);
-    const charts = $('charts');
-    charts.innerHTML = '';
-    for (const varName of Object.keys(VAR_META)){
-      renderBlock(charts, varName, data);
-    }
-  } catch (e) {
-    showError(`Failed to load run ${runId}: ${e.message}`);
+  function syncReadout(i){
+    if(i==null){ro.innerHTML='<span class="dim">Hover the chart for values</span>';return;}
+    const parts=['<span class="time">'+dayhm(baseXs[i])+'</span>'];
+    sel.forEach((id,k)=>{
+      const val=seriesData[k+1][i];
+      if(val!==null)parts.push('<span style="color:rgba('+m.rgb+','+Math.max(.4,1-k*0.22).toFixed(2)+')">'+id.slice(11,13)+':'+id.slice(13,15)+' '+fmt(val,edp)+'</span>');
+    });
+    ro.innerHTML=parts.join('<span class="dim">·</span>');
   }
+
+  const yScale=m.clamp?{range:(u,min,max)=>[0,Math.max(max,m.dp===2?0.2:1)]}:{};
+  const opts={
+    width:width,height:260,
+    cursor:{x:true,y:true,points:{show:false},drag:{x:false,y:false}},
+    legend:{show:false},
+    scales:{x:{time:false},y:yScale},
+    axes:[xAxisCfg(true),yAxis({values:(u,vals)=>vals.map(x=>x.toFixed(m.dp===2?1:0))})],
+    series:seriesCfg,
+    padding:[12,12,2,0],
+    hooks:{setCursor:[(u)=>{syncReadout(u.cursor.idx);}]}
+  };
+  charts.evo=new uPlot(opts,seriesData,host);
+}
+
+/* =========================================================
+   ORCHESTRATION
+========================================================= */
+let evoOpen=false;
+function renderForCurrent(){
+  const run=runCache[currentId];
+  if(!run)return;
+  updateStatusBar(run);
+  renderAnswers(run);
+  document.getElementById('footRun').textContent='RUN '+currentId;
+}
+
+function renderEvoAll(){buildEvoSeg();buildEvoChips();if(evoOpen)renderEvo();}
+
+function setupEvoToggle(){
+  const btn=document.getElementById('evoToggle');
+  const body=document.getElementById('evoBody');
+  btn.addEventListener('click',()=>{
+    evoOpen=!evoOpen;
+    btn.setAttribute('aria-expanded',evoOpen?'true':'false');
+    body.classList.toggle('open',evoOpen);
+    if(evoOpen)renderEvo();
+    else if(charts.evo){try{charts.evo.destroy();}catch(e){}charts.evo=null;}
+  });
 }
 
 async function init(){
-  try {
-    const runs = await fetchRuns();
-    state.runs = runs;
-    if (!runs.length){
-      showError('No forecast runs available. Run `python main.py` to generate one.');
-      return;
-    }
-    const sel = $('runSelect');
-    sel.innerHTML = runs.map(r => `<option value="${r}">${fmtRunLabel(r)}</option>`).join('');
-    sel.value = runs[0];
-    sel.addEventListener('change', () => loadRun(sel.value));
-    await loadRun(runs[0]);
-
-    $('evolution').innerHTML = '<div class="loading">loading run history…</div>';
-    const others = runs.filter(r => !state.allRuns[r]);
-    await Promise.all(others.map(async r => {
-      try { state.allRuns[r] = await fetchRun(r); } catch(e){}
-    }));
-
-    state.evolutionSelected = new Set(runs.slice(0, Math.min(4, runs.length)));
-    renderEvolution();
-
-    let tmo;
-    window.addEventListener('resize', () => {
-      clearTimeout(tmo);
-      tmo = setTimeout(() => {
-        if (state.data) {
-          renderMeteogram(state.data);
-          for (const varName of Object.keys(VAR_META)){
-            const vd = state.data.variables[varName];
-            if (vd && vd.times.length) drawChart(varName, vd);
-          }
-        }
-        renderEvolution();
-      }, 180);
-    });
-  } catch (e) {
-    showError(`Failed to fetch run list: ${e.message}`);
+  try{
+    runIds=await fetchRuns();
+  }catch(e){
+    document.body.insertAdjacentHTML('beforeend','<div class="miss">Failed to load run index: '+e.message+'</div>');
+    document.getElementById('led').style.background='var(--alert)';
+    document.getElementById('led').style.boxShadow='0 0 8px rgba(255,92,92,.7)';
+    return;
   }
+  if(!runIds.length){document.body.insertAdjacentHTML('beforeend','<div class="miss">No runs available.</div>');return;}
+  currentId=runIds[0];
+  evoSelected=runIds.slice(0,4);
+
+  // load newest run first, render
+  try{runCache[currentId]=await fetchRun(currentId);}catch(e){
+    document.body.insertAdjacentHTML('beforeend','<div class="miss">Failed to load run '+currentId+': '+e.message+'</div>');return;
+  }
+  buildRunSwitch();
+  setupEvoToggle();
+  renderForCurrent();
+
+  // evolution scaffold (chips need labels even before loads)
+  buildEvoSeg();buildEvoChips();
+
+  // lazy-load remaining runs, then render evolution
+  const rest=runIds.filter(id=>id!==currentId);
+  await Promise.all(rest.map(async id=>{
+    try{runCache[id]=await fetchRun(id);}catch(e){/* skip failed */}
+  }));
+  renderEvoAll();
 }
 
+/* responsive: only react to real WIDTH changes. Mobile browsers fire `resize`
+   on every URL-bar show/hide (height changes, width doesn't) — reacting to those
+   caused the scroll flicker. And relayout via uPlot setSize instead of
+   destroy+recreate, so there's no flash. */
+let rzTimer=null;
+let lastW=window.innerWidth;
+function fitChart(u,host){
+  if(!u)return;
+  const w=(host&&host.clientWidth)||u.width;
+  if(w&&w!==u.width)u.setSize({width:w,height:260});
+}
+window.addEventListener('resize',()=>{
+  clearTimeout(rzTimer);
+  rzTimer=setTimeout(()=>{
+    const w=window.innerWidth;
+    if(w===lastW)return;            // height-only (URL bar) — ignore
+    lastW=w;
+    ANSWER_ORDER.forEach(vk=>{
+      if(!detailCharts[vk])return;
+      const panel=document.querySelector('.readout-panel[data-vk="'+vk+'"]');
+      fitChart(detailCharts[vk],panel&&panel.querySelector('.rp-chart'));
+    });
+    fitChart(charts.evo,document.getElementById('evoChart'));
+  },200);
+},{passive:true});
+
 init();
-})();
 </script>
 </body>
 </html>
