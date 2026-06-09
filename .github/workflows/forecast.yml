@@ -76,8 +76,9 @@ jobs:
   deploy:
     needs: forecast
     # Only rebuild Pages when forecasts actually changed, so the frequent cron
-    # doesn't trigger a deploy on every fire.
-    if: needs.forecast.outputs.changed == 'true'
+    # doesn't trigger a deploy on every fire — but a manual run (workflow_dispatch)
+    # always deploys, so site/code changes can be pushed live on demand.
+    if: needs.forecast.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
