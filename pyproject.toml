@@ -17,4 +17,4 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "maturin[patchelf]>=1.4"]
