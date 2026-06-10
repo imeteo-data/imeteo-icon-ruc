@@ -177,13 +177,17 @@ def _local_run_horizon(run_id: str) -> datetime | None:
 
 
 def _is_run_complete(run_id: str) -> bool:
-    """True when the cached JSON already covers DWD's full horizon for this run.
+    """True when every location file exists and the gate location covers DWD's
+    full horizon for this run.
 
-    A missing JSON, a missing gate variable, or a cached horizon shorter than
-    DWD currently offers (the run was captured mid-upload) all count as
-    incomplete and should be re-fetched. If DWD can't be listed we keep what we
-    have rather than re-fetching forever.
+    A missing JSON for any location, a missing gate variable, or a cached
+    horizon shorter than DWD currently offers all count as incomplete. If DWD
+    can't be listed we keep what we have rather than re-fetching forever.
     """
+    # Every configured location must have its own forecast file.
+    for loc_id in config.LOCATIONS:
+        if not (config.FORECAST_DIR / f"{run_id}_{loc_id}.json").exists():
+            return False
     local = _local_run_horizon(run_id)
     if local is None:
         return False
