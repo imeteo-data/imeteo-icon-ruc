@@ -22,6 +22,9 @@ def main() -> None:
                    help="Skip runs already complete locally; only (re)fetch missing "
                         "or partially-uploaded runs. Use with --runs N to backfill a "
                         "window of recent runs and recover hours the scheduler dropped")
+    p.add_argument("--no-wait", action="store_true",
+                   help="Skip waiting for the latest run to finish uploading to DWD; "
+                        "process immediately with whatever files are available")
     args = p.parse_args()
 
     if args.list_local:
@@ -40,7 +43,8 @@ def main() -> None:
         return
     print(f"processing runs: {run_ids}")
     asyncio.run(run.process_runs(run_ids, offline=args.offline,
-                                 skip_complete=args.backfill))
+                                 skip_complete=args.backfill,
+                                 wait_for_upload=not args.no_wait))
 
 
 if __name__ == "__main__":

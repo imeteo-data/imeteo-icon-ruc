@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import config, discover, download, extract, grid, stats
@@ -145,6 +145,60 @@ def _is_run_complete(run_id: str) -> bool:
     return local >= remote
 
 
+async def _wait_for_run_upload(
+    run_id: str,
+    poll_interval: int = 60,
+    stable_polls: int = 3,
+    max_wait: int = 1800,
+) -> None:
+    """Poll DWD until `run_id`'s available horizon stops growing.
+
+    Exits immediately if the horizon already covers EXPECTED_FORECAST_MINUTES.
+    Declares the run complete after `stable_polls` consecutive checks with no
+    new files. Gives up after `max_wait` seconds and lets the pipeline run with
+    whatever is available, printing a warning.
+    """
+    base = datetime.strptime(run_id, "%Y-%m-%dT%H%M").replace(tzinfo=timezone.utc)
+    full_horizon = base + timedelta(minutes=config.EXPECTED_FORECAST_MINUTES)
+
+    prev: datetime | None = None
+    stable = 0
+    elapsed = 0
+
+    while elapsed < max_wait:
+        horizon = discover.remote_run_horizon(GATE_VARIABLE, run_id)
+        if horizon is None:
+            print(f"  ⚠ can't read remote horizon for {run_id}; skipping upload wait")
+            return
+
+        if horizon >= full_horizon:
+            print(f"  ✓ {run_id}: fully uploaded (horizon {horizon.isoformat()})")
+            return
+
+        if prev is not None:
+            if horizon <= prev:
+                stable += 1
+                print(f"  ⏳ {run_id}: horizon stable at {horizon.isoformat()} "
+                      f"({stable}/{stable_polls})")
+                if stable >= stable_polls:
+                    print(f"  ✓ {run_id}: upload stable — proceeding")
+                    return
+            else:
+                stable = 0
+                print(f"  ⏳ {run_id}: horizon grew → {horizon.isoformat()}, "
+                      f"full expected {full_horizon.isoformat()}")
+        else:
+            print(f"  ⏳ {run_id}: upload in progress "
+                  f"(horizon {horizon.isoformat()}, "
+                  f"expecting {full_horizon.isoformat()})")
+
+        prev = horizon
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
+
+    print(f"  ⚠ {run_id}: gave up waiting after {max_wait}s, processing what's available")
+
+
 def resolve_runs(run_id: str | None = None, runs: int = 1,
                  offline: bool = False) -> list[str]:
     """Pick the runs to process based on CLI args."""
@@ -160,18 +214,25 @@ def resolve_runs(run_id: str | None = None, runs: int = 1,
 
 
 async def process_runs(run_ids: list[str], offline: bool = False,
-                       skip_complete: bool = False) -> list[Path]:
+                       skip_complete: bool = False,
+                       wait_for_upload: bool = True) -> list[Path]:
     """Process each run; with skip_complete, skip runs already fully cached.
 
     skip_complete makes backfill cheap and self-healing: missing hours (dropped
     by the scheduler) and runs captured mid-upload get (re)fetched, while runs
     already covering DWD's full horizon are left untouched.
+
+    wait_for_upload (default True): before processing the most-recent run in
+    online mode, poll DWD until its upload is complete so we never write a
+    forecast truncated to the first few minutes of the model run.
     """
     outputs = []
-    for run_id in run_ids:
+    for i, run_id in enumerate(run_ids):
         if skip_complete and not offline and _is_run_complete(run_id):
             print(f"\n── run {run_id} ── already complete, skipping")
             continue
+        if i == 0 and not offline and wait_for_upload:
+            await _wait_for_run_upload(run_id)
         out = await process_run(run_id, offline=offline)
         if out:
             outputs.append(out)

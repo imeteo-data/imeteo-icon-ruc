@@ -358,51 +358,66 @@ function rainAnswer(run){
   const p90=safeArr(P.p90);
   const xs=toXs(v.times);
   if(!p01.length)return {head:'No rain data',sub:''};
-  const pkRaw=argMax(p01); const peakProb=pkRaw.v;     // headline % = real peak
-  if(peakProb===null)return {head:'No rain data',sub:''};
+
+  // only consider future timesteps
+  const nowSec=Date.now()/1000;
+  const firstFuture=xs.findIndex(x=>x>=nowSec);
+  if(firstFuture<0)return {head:'No rain data',sub:''};
+
   const lastIdx=xs.length-1;
-
-  if(peakProb<0.25){
-    return {head:'No rain expected',
-      sub:'peak chance <b>'+Math.round(peakProb*100)+'%</b>'};
-  }
-
-  // 5-min precip is noisy: smooth before finding the rain window, and require
-  // a SUSTAINED dry spell to call it "eased" so a single dip can't end it early.
+  // 5-min precip is noisy: smooth and require a sustained dry spell
   const sub5=xs.length>50;
   const sp=movAvgArr(p01,sub5?3:1);
-  const sustain=sub5?3:1;             // ~15 min of dry for 5-min steps
+  const sustain=sub5?3:1;
   const ONSET=0.40, EASE=0.25;
+  // p90 below this threshold is drizzle/noise not worth reporting
+  const DRIZZLE_P90=0.3;
 
-  // onset on the smoothed series
-  let onset=sp.findIndex(x=>x!==null&&x>=ONSET);
-  const strong=onset>=0;
-  if(onset<0)onset=sp.findIndex(x=>x!==null&&x>=EASE);
-  if(onset<0)onset=pkRaw.i;
-
-  // end = first step after onset whose next `sustain` steps are all dry
   const dry=i=>{const x=(i>lastIdx)?0:sp[i];return x===null||x<EASE;};
-  let endIdx=-1;
-  for(let i=onset+1;i<=lastIdx;i++){
-    let ok=true;for(let k=0;k<sustain;k++){if(!dry(i+k)){ok=false;break;}}
-    if(ok){endIdx=i;break;}
+
+  // enumerate all wet windows starting from the first future step
+  const wins=[];
+  let i=firstFuture;
+  while(i<=lastIdx){
+    while(i<=lastIdx&&dry(i))i++;
+    if(i>lastIdx)break;
+    const onset=i;
+    let endIdx=-1;
+    for(let j=onset+1;j<=lastIdx;j++){
+      let ok=true;for(let k=0;k<sustain;k++){if(!dry(j+k)){ok=false;break;}}
+      if(ok){endIdx=j;break;}
+    }
+    const winEnd=endIdx>=0?endIdx:lastIdx;
+    let pk90=null,pkProb=null;
+    for(let j=onset;j<=winEnd;j++){
+      const r=N(p90[j]);if(r!==null&&(pk90===null||r>pk90))pk90=r;
+      const pr=N(sp[j]);if(pr!==null&&(pkProb===null||pr>pkProb))pkProb=pr;
+    }
+    wins.push({onset,end:endIdx,winEnd,pk90,pkProb});
+    i=winEnd+1;
   }
 
-  // worst-case intensity across the active window [onset .. end|last]
-  const winEnd=endIdx>=0?endIdx:lastIdx;
-  let maxRate=null;
-  for(let i=onset;i<=winEnd;i++){const r=N(p90[i]);if(r!==null&&(maxRate===null||r>maxRate))maxRate=r;}
-  const amt=maxRate!==null?' <span class="dim">·</span> up to <b>'+maxRate.toFixed(1)+'</b> mm/h':'';
-
-  if(strong){
-    const tail=endIdx>=0?'easing by <b>'+fmtClock(xs[endIdx])+'</b>'
-                        :'continuing past <b>'+fmtClock(xs[lastIdx])+'</b>';
-    return {head:'Rain likely from <span class="accent">'+fmtClock(xs[onset])+'</span> · '+tail,
-      sub:'<b>'+Math.round(peakProb*100)+'%</b> chance'+amt};
+  // discard drizzle windows; among real rain pick the most intense
+  const real=wins.filter(w=>w.pk90!==null&&w.pk90>=DRIZZLE_P90);
+  if(!real.length){
+    let pk=null;
+    for(let j=firstFuture;j<=lastIdx;j++){const r=N(sp[j]);if(r!==null&&(pk===null||r>pk))pk=r;}
+    if(pk===null||pk<0.25)return {head:'No rain expected',sub:''};
+    return {head:'No rain expected',sub:'peak chance <b>'+Math.round(pk*100)+'%</b>'};
   }
-  // light rain possible (peaked between 25% and 40%)
-  return {head:'Light rain possible around <span class="accent">'+fmtClock(xs[pkRaw.i])+'</span>',
-    sub:'<b>'+Math.round(peakProb*100)+'%</b> chance'+amt};
+  const w=real.reduce((a,b)=>b.pk90>a.pk90?b:a);
+
+  const prob=w.pkProb||0;
+  const amt=' <span class="dim">·</span> up to <b>'+w.pk90.toFixed(1)+'</b> mm/h';
+
+  if(prob>=ONSET){
+    const tail=w.end>=0?'easing by <b>'+fmtClock(xs[w.end])+'</b>'
+                       :'continuing past <b>'+fmtClock(xs[lastIdx])+'</b>';
+    return {head:'Rain likely from <span class="accent">'+fmtClock(xs[w.onset])+'</span> · '+tail,
+      sub:'<b>'+Math.round(prob*100)+'%</b> chance'+amt};
+  }
+  return {head:'Light rain possible around <span class="accent">'+fmtClock(xs[w.onset])+'</span>',
+    sub:'<b>'+Math.round(prob*100)+'%</b> chance'+amt};
 }
 
 function tempAnswer(run){

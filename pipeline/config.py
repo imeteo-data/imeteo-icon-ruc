@@ -52,6 +52,11 @@ MAX_CONCURRENT_DOWNLOADS = 20
 DOWNLOAD_TIMEOUT_SECONDS = 120
 HTTP_USER_AGENT = "icon-ruc/2.0"
 
+# ICON-D2-RUC-EPS runs ~14 h; treat a run as fully uploaded once DWD's index
+# reaches this many lead-time minutes (conservative: slightly below the true max
+# so we don't wait for the last handful of files).
+EXPECTED_FORECAST_MINUTES = 800
+
 
 def ensure_dirs() -> None:
     for d in (DATA_DIR, RAW_DIR, GRID_DIR, FORECAST_DIR):
