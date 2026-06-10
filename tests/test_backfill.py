@@ -83,7 +83,7 @@ def test_process_runs_skips_complete_processes_incomplete(monkeypatch):
 
     async def fake_process_run(run_id, offline=False):
         processed.append(run_id)
-        return config.FORECAST_DIR / f"{run_id}.json"
+        return [config.FORECAST_DIR / f"{run_id}_bratislava.json"]
 
     monkeypatch.setattr(run, "process_run", fake_process_run)
     monkeypatch.setattr(run, "_is_run_complete", lambda rid: rid == "2026-05-29T0900")
@@ -91,6 +91,7 @@ def test_process_runs_skips_complete_processes_incomplete(monkeypatch):
     out = asyncio.run(run.process_runs(
         ["2026-05-29T1000", "2026-05-29T0900", "2026-05-29T0800"],
         skip_complete=True,
+        wait_for_upload=False,
     ))
 
     assert processed == ["2026-05-29T1000", "2026-05-29T0800"]
@@ -102,13 +103,13 @@ def test_process_runs_without_skip_processes_everything(monkeypatch):
 
     async def fake_process_run(run_id, offline=False):
         processed.append(run_id)
-        return config.FORECAST_DIR / f"{run_id}.json"
+        return [config.FORECAST_DIR / f"{run_id}_bratislava.json"]
 
     monkeypatch.setattr(run, "process_run", fake_process_run)
     # Even if everything looks complete, default behaviour reprocesses.
     monkeypatch.setattr(run, "_is_run_complete", lambda rid: True)
 
-    out = asyncio.run(run.process_runs(["a", "b"]))
+    out = asyncio.run(run.process_runs(["a", "b"], wait_for_upload=False))
 
     assert processed == ["a", "b"]
     assert len(out) == 2

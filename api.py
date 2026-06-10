@@ -25,8 +25,11 @@ def _list_runs() -> list[str]:
     now = time.time()
     if now - _RUN_LIST_CACHE[0] < _RUN_LIST_TTL and _RUN_LIST_CACHE[1]:
         return _RUN_LIST_CACHE[1]
+    # Deduplicate: stem may be "{run_id}_{location_id}" or legacy "{run_id}".
+    # run_id is always the first 15 chars (YYYY-MM-DDTHHMM).
     ids = sorted(
-        (p.stem for p in config.FORECAST_DIR.glob("*.json")),
+        {p.stem[:15] for p in config.FORECAST_DIR.glob("*.json")
+         if p.stem != "index" and len(p.stem) >= 15},
         reverse=True,
     )
     _RUN_LIST_CACHE = (now, ids)
@@ -61,13 +64,32 @@ def api_latest():
     return redirect(f"/api/runs/{runs[0]}", code=302)
 
 
-@app.route("/api/runs/<run_id>")
-def api_run(run_id: str):
-    path = config.FORECAST_DIR / f"{run_id}.json"
+@app.route("/api/locations")
+def api_locations():
+    return jsonify(config.LOCATIONS)
+
+
+@app.route("/api/runs/<run_id>/<location_id>")
+def api_run_location(run_id: str, location_id: str):
+    path = config.FORECAST_DIR / f"{run_id}_{location_id}.json"
     if not path.exists():
-        abort(404, description=f"run {run_id} not found")
+        abort(404, description=f"run {run_id} location {location_id} not found")
     with open(path) as f:
         return jsonify(json.load(f))
+
+
+@app.route("/api/runs/<run_id>")
+def api_run(run_id: str):
+    # Serve the default (first) location; fall back to legacy single-location file.
+    default_loc = next(iter(config.LOCATIONS))
+    for path in (
+        config.FORECAST_DIR / f"{run_id}_{default_loc}.json",
+        config.FORECAST_DIR / f"{run_id}.json",
+    ):
+        if path.exists():
+            with open(path) as f:
+                return jsonify(json.load(f))
+    abort(404, description=f"run {run_id} not found")
 
 
 def main() -> None:

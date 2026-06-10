@@ -3,15 +3,25 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import config, discover, download, extract, grid, stats
 
 # Variable used to judge whether a cached run is "fully uploaded". TOT_PREC is
-# the densest (15-min steps) and the last to finish publishing on DWD, so it is
+# the densest (5-min steps) and the last to finish publishing on DWD, so it is
 # a safe gate even if other variables lag or are absent.
 GATE_VARIABLE = "TOT_PREC"
+
+
+def _stem_to_run_id(stem: str) -> str:
+    """Extract run_id from a forecast JSON stem.
+
+    '2026-06-10T1200_bratislava' -> '2026-06-10T1200'
+    '2026-06-10T1200'            -> '2026-06-10T1200'  (legacy single-location)
+    """
+    return stem[:15]
 
 
 async def _download_run(variable: str, run_id: str, offline: bool) -> list[Path]:
@@ -32,100 +42,138 @@ async def _download_run(variable: str, run_id: str, offline: bool) -> list[Path]
     return await download.fetch_variable(variable, run_id, ensembles, steps)
 
 
-async def process_run(run_id: str, offline: bool = False) -> Path | None:
-    """Process one run: download/load all variables, extract, compute stats, write JSON."""
+async def process_run(run_id: str, offline: bool = False) -> list[Path]:
+    """Process one run across all configured locations.
+
+    Downloads each variable's GRIB files once, then extracts the target cell
+    for every location from the same files — no extra downloads per location.
+    Writes one JSON per location: data/forecasts/{run_id}_{location_id}.json
+    """
     print(f"\n── run {run_id} ──")
     tree, lats, _ = grid.load_or_build_index()
-    cell_index, distance_km = grid.nearest_index(
-        tree, config.LOCATION["lat"], config.LOCATION["lon"]
-    )
-    print(f"  nearest grid cell: idx={cell_index} ({distance_km:.2f} km from target)")
 
-    output = {
-        "run_id": run_id,
-        "location": config.LOCATION,
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "grid_distance_km": round(distance_km, 3),
-        "variables": {},
-    }
+    # Download (or load from cache) each variable once — same files for all locations.
+    var_paths: dict[str, list[Path]] = {}
     for var_name in config.VARIABLES:
-        paths = await _download_run(var_name, run_id, offline)
-        if not paths:
-            print(f"  {var_name}: skipped (no files)")
-            continue
-        print(f"  {var_name}: extracting from {len(paths)} files...")
-        series = extract.extract_variable(paths, var_name, cell_index)
-        output["variables"][var_name] = stats.build_variable_output(series, var_name)
-        print(f"  {var_name}: {len(series)} ensemble members, "
-              f"{len(output['variables'][var_name]['times'])} timestamps")
+        var_paths[var_name] = await _download_run(var_name, run_id, offline)
 
-    if not output["variables"]:
+    if not any(var_paths.values()):
         print(f"  ✗ no data for {run_id}")
-        return None
+        return []
 
+    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     config.ensure_dirs()
-    out_path = config.FORECAST_DIR / f"{run_id}.json"
-    with open(out_path, "w") as f:
-        json.dump(output, f, separators=(",", ":"))
-    print(f"  ✓ wrote {out_path}")
-    _prune_old_runs(config.FORECAST_RETAIN)
-    _write_index()
-    return out_path
+    outputs = []
+
+    for loc_id, loc_cfg in config.LOCATIONS.items():
+        cell_index, distance_km = grid.nearest_index(
+            tree, loc_cfg["lat"], loc_cfg["lon"]
+        )
+        print(f"  [{loc_id}] nearest grid cell: idx={cell_index} ({distance_km:.2f} km)")
+
+        loc_output = {
+            "run_id": run_id,
+            "location_id": loc_id,
+            "location": loc_cfg,
+            "generated_at": generated_at,
+            "grid_distance_km": round(distance_km, 3),
+            "variables": {},
+        }
+        for var_name, paths in var_paths.items():
+            if not paths:
+                print(f"  [{loc_id}] {var_name}: skipped (no files)")
+                continue
+            print(f"  [{loc_id}] {var_name}: extracting from {len(paths)} files...")
+            series = extract.extract_variable(paths, var_name, cell_index)
+            loc_output["variables"][var_name] = stats.build_variable_output(series, var_name)
+            print(f"  [{loc_id}] {var_name}: {len(series)} members, "
+                  f"{len(loc_output['variables'][var_name]['times'])} timestamps")
+
+        if not loc_output["variables"]:
+            print(f"  [{loc_id}] ✗ no data")
+            continue
+
+        out_path = config.FORECAST_DIR / f"{run_id}_{loc_id}.json"
+        with open(out_path, "w") as f:
+            json.dump(loc_output, f, separators=(",", ":"))
+        print(f"  [{loc_id}] ✓ wrote {out_path.name}")
+        outputs.append(out_path)
+
+    if outputs:
+        _prune_old_runs(config.FORECAST_RETAIN)
+        _write_index()
+
+    return outputs
 
 
 def _prune_old_runs(keep: int) -> None:
-    """Keep only the newest `keep` forecast JSONs; delete older JSONs + their GRIBs."""
+    """Keep only the newest `keep` run_ids; delete older JSONs + their GRIBs."""
     if keep <= 0:
         return
-    all_jsons = sorted(
-        (p for p in config.FORECAST_DIR.glob("*.json") if p.stem != "index"),
-        key=lambda p: p.stem,
-        reverse=True,
-    )
-    stale = all_jsons[keep:]
+    by_run: dict[str, list[Path]] = defaultdict(list)
+    for p in config.FORECAST_DIR.glob("*.json"):
+        if p.stem == "index":
+            continue
+        by_run[_stem_to_run_id(p.stem)].append(p)
+
+    sorted_runs = sorted(by_run.keys(), reverse=True)
+    stale = sorted_runs[keep:]
     if not stale:
         return
-    for jp in stale:
-        run_id = jp.stem
+    for run_id in stale:
         for grib in config.RAW_DIR.glob(f"icon_d2_ruc_eps_*_{run_id}_*"):
             try:
                 grib.unlink()
             except OSError as e:
                 print(f"  ⚠ failed to remove {grib.name}: {e}")
-        try:
-            jp.unlink()
-            print(f"  ✂ pruned old run {run_id}")
-        except OSError as e:
-            print(f"  ⚠ failed to remove {jp.name}: {e}")
+        for jp in by_run[run_id]:
+            try:
+                jp.unlink()
+            except OSError as e:
+                print(f"  ⚠ failed to remove {jp.name}: {e}")
+        print(f"  ✂ pruned old run {run_id}")
 
 
 def _write_index() -> None:
     """Emit data/forecasts/index.json — the static catalog the dashboard reads."""
-    run_ids = sorted(
-        (p.stem for p in config.FORECAST_DIR.glob("*.json") if p.stem != "index"),
-        reverse=True,
-    )
+    by_run: dict[str, list[str]] = defaultdict(list)
+    for p in config.FORECAST_DIR.glob("*.json"):
+        if p.stem == "index":
+            continue
+        by_run[_stem_to_run_id(p.stem)].append(p.stem)
+    run_ids = sorted(by_run.keys(), reverse=True)
     idx_path = config.FORECAST_DIR / "index.json"
     with open(idx_path, "w") as f:
-        json.dump({"runs": run_ids, "generated_at":
-                   datetime.now(timezone.utc).isoformat(timespec="seconds")},
-                  f, separators=(",", ":"))
+        json.dump({
+            "locations": config.LOCATIONS,
+            "runs": run_ids,
+            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }, f, separators=(",", ":"))
 
 
-def _local_run_horizon(run_id: str, variable: str = GATE_VARIABLE) -> datetime | None:
-    """Last valid-time stored in the cached JSON for `variable`, or None."""
-    path = config.FORECAST_DIR / f"{run_id}.json"
-    if not path.exists():
-        return None
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return None
-    times = data.get("variables", {}).get(variable, {}).get("times", [])
-    if not times:
-        return None
-    return datetime.fromisoformat(times[-1].replace("Z", "+00:00"))
+def _local_run_horizon(run_id: str) -> datetime | None:
+    """Last valid-time stored in the cached JSON for the gate variable.
+
+    Tries the new multi-location filename first; falls back to the legacy
+    single-location file so the transition period doesn't break backfill.
+    """
+    gate_loc = next(iter(config.LOCATIONS))
+    candidates = [
+        config.FORECAST_DIR / f"{run_id}_{gate_loc}.json",
+        config.FORECAST_DIR / f"{run_id}.json",   # legacy
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        times = data.get("variables", {}).get(GATE_VARIABLE, {}).get("times", [])
+        if times:
+            return datetime.fromisoformat(times[-1].replace("Z", "+00:00"))
+    return None
 
 
 def _is_run_complete(run_id: str) -> bool:
@@ -226,14 +274,17 @@ async def process_runs(run_ids: list[str], offline: bool = False,
     online mode, poll DWD until its upload is complete so we never write a
     forecast truncated to the first few minutes of the model run.
     """
-    outputs = []
+    outputs: list[Path] = []
     for i, run_id in enumerate(run_ids):
         if skip_complete and not offline and _is_run_complete(run_id):
             print(f"\n── run {run_id} ── already complete, skipping")
             continue
         if i == 0 and not offline and wait_for_upload:
             await _wait_for_run_upload(run_id)
-        out = await process_run(run_id, offline=offline)
-        if out:
-            outputs.append(out)
+        outs = await process_run(run_id, offline=offline)
+        # outs is list[Path]; guard against legacy mocks that return a single Path
+        if isinstance(outs, list):
+            outputs.extend(outs)
+        elif outs is not None:
+            outputs.append(outs)
     return outputs

@@ -186,7 +186,8 @@ a{color:inherit;}
 <body>
 
 <header class="statusbar">
-  <div class="sb-id"><span class="led" id="led"></span>ICON-D2-RUC-EPS<span class="sb-loc">· BRATISLAVA</span></div>
+  <div class="sb-id"><span class="led" id="led"></span>ICON-D2-RUC-EPS<span class="sb-loc" id="sbLoc">· BRATISLAVA</span></div>
+  <div class="seg" id="locSwitch"></div>
   <div class="sb-spacer"></div>
   <div class="runswitch"><select id="runSelect" aria-label="Forecast run"></select></div>
   <div class="sb-meta">
@@ -231,8 +232,20 @@ a{color:inherit;}
 
 /* ---------- data fetch ---------- */
 async function fetchJSON(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw new Error(u+': '+r.status);return r.json();}
-async function fetchRuns(){try{return (await fetchJSON('./data/forecasts/index.json')).runs||[];}catch(e){return fetchJSON('/api/runs');}}
-async function fetchRun(id){try{return await fetchJSON('./data/forecasts/'+id+'.json');}catch(e){return fetchJSON('/api/runs/'+id);}}
+async function fetchRuns(){
+  try{
+    const idx=await fetchJSON('./data/forecasts/index.json');
+    if(idx.locations)locations=idx.locations;
+    return idx.runs||[];
+  }catch(e){
+    try{fetchJSON('/api/locations').then(l=>{locations=l;buildLocSwitch();}).catch(()=>{});}catch(_){}
+    return fetchJSON('/api/runs');
+  }
+}
+async function fetchRun(id){
+  try{return await fetchJSON('./data/forecasts/'+id+'_'+activeLocation+'.json');}
+  catch(e){return fetchJSON('/api/runs/'+id+'/'+activeLocation);}
+}
 
 /* ---------- meta ---------- */
 const VARS={
@@ -296,6 +309,8 @@ function xAxisCfg(showVals){return {stroke:AX_STROKE,font:'11px IBM Plex Mono',
 const runCache={};          // id -> run object
 let runIds=[];
 let currentId=null;
+let activeLocation='bratislava';
+let locations={};           // populated from index.json
 let firstRender=true;        // entrance animation only on the first paint
 let evoVar='TOT_PREC';
 let evoSelected=[];          // run ids included in evolution
@@ -330,6 +345,39 @@ function buildRunSwitch(){
   runIds.forEach(id=>{const o=document.createElement('option');o.value=id;o.textContent=runLabel(id);sel.appendChild(o);});
   sel.value=currentId;
   sel.onchange=()=>{currentId=sel.value;renderForCurrent();};
+}
+function buildLocSwitch(){
+  const el=document.getElementById('locSwitch');
+  if(!el)return;
+  el.innerHTML='';
+  Object.entries(locations).forEach(([locId,locCfg])=>{
+    const btn=document.createElement('button');
+    btn.textContent=locCfg.name;
+    btn.dataset.loc=locId;
+    if(locId===activeLocation)btn.classList.add('active');
+    btn.onclick=()=>switchLocation(locId);
+    el.appendChild(btn);
+  });
+}
+function switchLocation(locId){
+  if(locId===activeLocation)return;
+  activeLocation=locId;
+  // Clear cache — each location has its own forecasts.
+  Object.keys(runCache).forEach(k=>delete runCache[k]);
+  document.getElementById('sbLoc').textContent='· '+(locations[locId]?.name||locId).toUpperCase();
+  document.querySelectorAll('#locSwitch button').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.loc===locId);
+  });
+  (async()=>{
+    try{
+      runCache[currentId]=await fetchRun(currentId);
+      renderForCurrent();
+      await Promise.all(runIds.filter(id=>id!==currentId).map(async id=>{
+        try{runCache[id]=await fetchRun(id);}catch(e){}
+      }));
+      renderEvoAll();
+    }catch(e){}
+  })();
 }
 function updateStatusBar(run){
   document.getElementById('updAgo').textContent=relAge(run.generated_at);
@@ -756,6 +804,7 @@ async function init(){
     document.body.insertAdjacentHTML('beforeend','<div class="miss">Failed to load run '+currentId+': '+e.message+'</div>');return;
   }
   buildRunSwitch();
+  buildLocSwitch();
   setupEvoToggle();
   renderForCurrent();
 

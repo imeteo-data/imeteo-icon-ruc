@@ -6,7 +6,18 @@ RAW_DIR = DATA_DIR / "raw"
 GRID_DIR = DATA_DIR / "grid"
 FORECAST_DIR = DATA_DIR / "forecasts"
 
-LOCATION = {"name": "Bratislava", "lat": 48.162891146409, "lon": 17.136906864798476}
+LOCATIONS = {
+    "bratislava": {
+        "name": "Bratislava",
+        "lat": 48.162891146409,
+        "lon": 17.136906864798476,
+    },
+    "hradec-kralove": {
+        "name": "Hradec Králové",
+        "lat": 50.2097,
+        "lon": 15.8253,
+    },
+}
 
 VARIABLES = {
     "TOT_PREC": {

@@ -32,6 +32,9 @@ def _targets_by_keep_last(keep: int, keep_forecasts: bool
         files.extend(config.RAW_DIR.glob(f"icon_d2_ruc_eps_*_{rid}_*"))
         # Forecast JSON (optional)
         if not keep_forecasts:
+            # New format: {rid}_{location_id}.json per location.
+            files.extend(config.FORECAST_DIR.glob(f"{rid}_*.json"))
+            # Legacy single-location file (pre-multi-location deploys).
             jp = config.FORECAST_DIR / f"{rid}.json"
             if jp.exists():
                 files.append(jp)
