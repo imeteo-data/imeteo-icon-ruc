@@ -27,7 +27,7 @@ jobs:
     # Higher than the old 15: a backfill after a long scheduler gap may process
     # several runs. If it still overruns, the next fire continues where it left
     # off (the work is self-healing), so this is just a safety net.
-    timeout-minutes: 30
+    timeout-minutes: 90
     outputs:
       changed: ${{ steps.commit.outputs.changed }}
     steps:
