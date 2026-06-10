@@ -22,6 +22,8 @@ try:
 except ImportError:
     _RUST_AVAILABLE = False
 
+print(f"  extract backend: {'Rust (extract_rs)' if _RUST_AVAILABLE else 'Python (xarray fallback)'}")
+
 
 def _read_point_python(path: Path, grib_var: str, cell_index: int
                        ) -> tuple[np.datetime64, float] | None:
