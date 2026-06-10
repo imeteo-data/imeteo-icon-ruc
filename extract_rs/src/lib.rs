@@ -8,49 +8,44 @@ use rayon::prelude::*;
 use std::path::Path;
 
 /// Read one (timestamp_seconds, value) for the named variable at `cell_index`.
-/// Returns None on any failure, missing variable, out-of-bounds, or NaN.
-fn extract_one(path: &str, cell_index: usize, grib_var: &str) -> Option<(i64, f64)> {
+/// Returns None on any failure, out-of-bounds, or NaN/missing value.
+///
+/// Files are pre-filtered by filename so each contains exactly one message
+/// for the right variable. We extract the first message without checking
+/// shortName — DWD-specific variables (e.g. max_i10fg, paramId 237318) resolve
+/// to "unknown" on systems without DWD's eccodes definition tables.
+fn extract_one(path: &str, cell_index: usize, _grib_var: &str) -> Option<(i64, f64)> {
     let mut handle = CodesFile::new_from_file(Path::new(path), ProductKind::GRIB).ok()?;
     let mut iter = handle.ref_message_iter();
-    loop {
-        let msg = match iter.next() {
-            Ok(Some(m)) => m,
-            _ => return None,
-        };
+    let msg = match iter.next() {
+        Ok(Some(m)) => m,
+        _ => return None,
+    };
 
-        let short_name: String = match msg.read_key("shortName") {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        if short_name != grib_var {
-            continue;
-        }
+    let vdate: i64 = msg.read_key("validityDate").ok()?;
+    let vtime: i64 = msg.read_key("validityTime").ok()?;
+    let epoch = civil_to_unix(
+        (vdate / 10000) as i32,
+        ((vdate / 100) % 100) as u32,
+        (vdate % 100) as u32,
+        (vtime / 100) as u32,
+        (vtime % 100) as u32,
+    );
 
-        let vdate: i64 = msg.read_key("validityDate").ok()?;
-        let vtime: i64 = msg.read_key("validityTime").ok()?;
-        let epoch = civil_to_unix(
-            (vdate / 10000) as i32,
-            ((vdate / 100) % 100) as u32,
-            (vdate % 100) as u32,
-            (vtime / 100) as u32,
-            (vtime % 100) as u32,
-        );
-
-        let values: Vec<f64> = msg.read_key("values").ok()?;
-        if cell_index >= values.len() {
-            return None;
-        }
-        let v = values[cell_index];
-        if v.is_nan() {
-            return None;
-        }
-        // DWD uses 9999.0 as a missing-value sentinel outside the model domain.
-        let missing: f64 = msg.read_key("missingValue").unwrap_or(9999.0);
-        if (v - missing).abs() < 1e-6 {
-            return None;
-        }
-        return Some((epoch, v));
+    let values: Vec<f64> = msg.read_key("values").ok()?;
+    if cell_index >= values.len() {
+        return None;
     }
+    let v = values[cell_index];
+    if v.is_nan() {
+        return None;
+    }
+    // DWD uses 9999.0 as a missing-value sentinel outside the model domain.
+    let missing: f64 = msg.read_key("missingValue").unwrap_or(9999.0);
+    if (v - missing).abs() < 1e-6 {
+        return None;
+    }
+    Some((epoch, v))
 }
 
 /// Howard Hinnant's days_from_civil algorithm, to UNIX seconds.
