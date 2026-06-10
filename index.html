@@ -405,12 +405,12 @@ function rainAnswer(run){
   const p01=safeArr(v.probability_exceeds&&v.probability_exceeds['0.1']);
   const p90=safeArr(P.p90);
   const xs=toXs(v.times);
-  if(!p01.length)return {head:'No rain data',sub:''};
+  if(!p01.length)return null;
 
   // only consider future timesteps
   const nowSec=Date.now()/1000;
   const firstFuture=xs.findIndex(x=>x>=nowSec);
-  if(firstFuture<0)return {head:'No rain data',sub:''};
+  if(firstFuture<0)return null;
 
   const lastIdx=xs.length-1;
   // 5-min precip is noisy: smooth and require a sustained dry spell
@@ -476,7 +476,7 @@ function tempAnswer(run){
   const xs=toXs(v.times);
   const f=firstVal(p50);
   const nowT=f.v;
-  if(nowT===null)return {head:'No temperature data',sub:''};
+  if(nowT===null)return null;
   const mx=argMax(p50), mn=argMin(p50);
   const maxT=mx.v, maxIdx=mx.i, minT=mn.v, minIdx=mn.i;
   const nowIdx=f.i;
@@ -510,7 +510,7 @@ function windAnswer(run){
   const f=firstVal(p50);
   const nowG=f.v;
   const pk=argMax(p50); const peakG=pk.v, peakIdx=pk.i;
-  if(peakG===null)return {head:'No wind data',sub:''};
+  if(peakG===null)return null;
   const peakKmh=peakG*MS;
   const nowKmh=nowG===null?null:nowG*MS;
   const strength=windStrength(nowKmh!==null?nowKmh:peakKmh);
@@ -705,7 +705,7 @@ function renderEvo(){
   const scale=(evoVar==='VMAX_10M')?MS:1;          // wind -> km/h everywhere
   const edp=(evoVar==='VMAX_10M')?0:m.dp;
   // ordered newest-first among selected, that are actually loaded
-  const sel=runIds.filter(id=>evoSelected.includes(id)&&runCache[id]&&getVar(runCache[id],evoVar));
+  const sel=runIds.filter(id=>evoSelected.includes(id)&&runCache[id]&&(getVar(runCache[id],evoVar)||{times:[]}).times.length>0);
   if(!sel.length){host.innerHTML='<div class="miss">No runs selected (or variable missing).</div>';ro.innerHTML='';return;}
   const width=host.clientWidth||document.querySelector('.wrap').clientWidth-32;
 
