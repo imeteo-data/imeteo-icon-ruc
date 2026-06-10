@@ -6,7 +6,17 @@ on:
     # often + backfilling (below) keeps gaps small. A fire that finds nothing
     # new is cheap: completeness checks only, no commit, no deploy.
     - cron: "*/15 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Number of recent runs to process"
+        required: false
+        default: "12"
+      force:
+        description: "Force reprocess even if already complete (no --backfill)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -56,10 +66,16 @@ jobs:
         run: uv run maturin develop --release --manifest-path extract_rs/Cargo.toml
 
       - name: Fetch & backfill recent runs
-        # Process the newest 12 runs but skip any already fully cached, so this
-        # recovers hours the scheduler dropped and re-fetches the still-uploading
-        # latest run, while normally doing only ~1 run's worth of work.
-        run: uv run python main.py --runs 12 --backfill
+        # Process the newest N runs. Normally uses --backfill to skip already-complete
+        # runs (cheap). Pass force=true via workflow_dispatch to reprocess unconditionally.
+        run: |
+          RUNS="${{ github.event.inputs.runs || '12' }}"
+          FORCE="${{ github.event.inputs.force || 'false' }}"
+          if [ "$FORCE" = "true" ]; then
+            uv run python main.py --runs "$RUNS" --no-wait
+          else
+            uv run python main.py --runs "$RUNS" --backfill
+          fi
 
       - name: Trim old runs (keep newest 12 JSONs)
         run: uv run python cleanup.py --keep-last 12
