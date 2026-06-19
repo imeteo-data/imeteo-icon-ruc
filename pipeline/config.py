@@ -12,10 +12,10 @@ LOCATIONS = {
         "lat": 48.162891146409,
         "lon": 17.136906864798476,
     },
-    "hradec-kralove": {
-        "name": "Hradec Králové",
-        "lat": 50.2097,
-        "lon": 15.8253,
+    "x-bionic": {
+        "name": "X-BIONIC",
+        "lat": 48.01650979071846,
+        "lon": 17.30279549749705,
     },
 }
 
