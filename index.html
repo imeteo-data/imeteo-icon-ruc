@@ -719,12 +719,18 @@ function renderEvo(){
   sel.forEach((id,idx)=>{
     const v=getVar(runCache[id],evoVar);
     const xs=toXs(v.times);const p50=safeArr(v.percentiles&&v.percentiles.p50);
-    // map base xs -> nearest p50 of this run (only where within reach)
+    // tolerance = half this run's own step, so a base point matches only a
+    // genuinely coincident source point. A larger tol would re-use a run's last
+    // value one extra step past its end, drawing a flat horizontal stub (the
+    // staircase artifact). Derived from the data, so it's unit-agnostic and
+    // works for both hourly (temp/wind) and 5-min (precip) grids.
+    let step=Infinity;
+    for(let i=1;i<xs.length;i++){const dx=xs[i]-xs[i-1];if(dx>0&&dx<step)step=dx;}
+    const tol=(isFinite(step)?step:3600)*0.5;
+    // map base xs -> nearest p50 of this run (only where genuinely coincident)
     const aligned=baseXs.map(bx=>{
       let best=null,bd=Infinity;
       for(let i=0;i<xs.length;i++){const d=Math.abs(xs[i]-bx);if(d<bd){bd=d;best=i;}}
-      // step interval guard: for hourly data accept up to 90min, for 5-min accept 8min
-      const tol=(xs.length>50)?(8*60):(95*60);
       const raw=(best!==null&&bd<=tol)?N(p50[best]):null;
       return raw===null?null:raw*scale;
     });
