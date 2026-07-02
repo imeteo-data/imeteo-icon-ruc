@@ -54,7 +54,15 @@ PERCENTILES = [10, 25, 50, 75, 90]
 # re-downloaded next run. It also bounds how many runs the dashboard shows.
 FORECAST_RETAIN = 12
 
-DWD_BASE = "https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc-eps/p"
+# DWD discontinued icon-d2-ruc-eps (404 as of 2026-07-02). icon-d2-ruc is its
+# deterministic sibling — same v1/m URL/file layout minus the e/{ensemble}/
+# segment — used here as a stopgap so the dashboard keeps publishing. It has
+# no ensemble spread (see DWD_HAS_ENSEMBLE): percentiles/probability_exceeds
+# collapse to the single member's value until a real ensemble source (e.g.
+# icon-d2-eps, which needs a much larger rework — different layout, bz2,
+# multi-member files) replaces it.
+DWD_BASE = "https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc/p"
+DWD_HAS_ENSEMBLE = False
 GRID_URL = "https://opendata.dwd.de/weather/lib/cdo/icon_grid_0047_R19B07_L.nc.bz2"
 GRID_FILE = GRID_DIR / "icon_grid_0047_R19B07_L.nc"
 KDTREE_CACHE = GRID_DIR / "kdtree.pkl"
@@ -63,9 +71,9 @@ MAX_CONCURRENT_DOWNLOADS = 20
 DOWNLOAD_TIMEOUT_SECONDS = 120
 HTTP_USER_AGENT = "icon-ruc/2.0"
 
-# ICON-D2-RUC-EPS runs ~14 h; treat a run as fully uploaded once DWD's index
-# reaches this many lead-time minutes (conservative: slightly below the true max
-# so we don't wait for the last handful of files).
+# icon-d2-ruc runs to a ~27 h horizon; treat a run as fully uploaded once
+# DWD's index reaches this many lead-time minutes (conservative: slightly
+# below the true max so we don't wait for the last handful of files).
 EXPECTED_FORECAST_MINUTES = 800
 
 

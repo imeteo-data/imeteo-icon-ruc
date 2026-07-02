@@ -37,6 +37,8 @@ def local_filename(variable: str, run_id: str, ensemble: str, step: str) -> str:
 
 def build_url(variable: str, run_id: str, ensemble: str, step: str) -> str:
     run_url = run_id_to_url(run_id)
+    if not config.DWD_HAS_ENSEMBLE:
+        return f"{config.DWD_BASE}/{variable}/r/{run_url}/s/{step}.grib2"
     return f"{config.DWD_BASE}/{variable}/r/{run_url}/e/{ensemble}/s/{step}.grib2"
 
 
@@ -55,6 +57,11 @@ def list_remote_runs(variable: str = "TOT_PREC", limit: int | None = None) -> li
 
 
 def list_remote_ensembles(variable: str, run_id: str) -> list[str]:
+    if not config.DWD_HAS_ENSEMBLE:
+        # Deterministic source: no e/{ensemble}/ layer. Use a synthetic single
+        # member id so the rest of the pipeline (filenames, extract, stats)
+        # doesn't need to know the difference.
+        return ["00"]
     url = f"{config.DWD_BASE}/{variable}/r/{run_id_to_url(run_id)}/e/"
     resp = requests.get(url, timeout=30, headers={"User-Agent": config.HTTP_USER_AGENT})
     resp.raise_for_status()
@@ -66,7 +73,10 @@ def list_remote_ensembles(variable: str, run_id: str) -> list[str]:
 
 
 def list_remote_steps(variable: str, run_id: str, ensemble: str) -> list[str]:
-    url = f"{config.DWD_BASE}/{variable}/r/{run_id_to_url(run_id)}/e/{ensemble}/s/"
+    if config.DWD_HAS_ENSEMBLE:
+        url = f"{config.DWD_BASE}/{variable}/r/{run_id_to_url(run_id)}/e/{ensemble}/s/"
+    else:
+        url = f"{config.DWD_BASE}/{variable}/r/{run_id_to_url(run_id)}/s/"
     resp = requests.get(url, timeout=30, headers={"User-Agent": config.HTTP_USER_AGENT})
     resp.raise_for_status()
     soup = BeautifulSoup(resp.content, "html.parser")
