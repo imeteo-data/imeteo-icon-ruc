@@ -1,0 +1,6 @@
+{
+  "extraKnownMarketplaces": {
+    "imeteo": { "source": { "source": "github", "repo": "imeteo-data/meta" } }
+  },
+  "enabledPlugins": { "imeteo-standards@imeteo": true }
+}

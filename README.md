@@ -1,147 +1,56 @@
 # ICON-D2-RUC-EPS · Bratislava
 
-Ensemble precipitation and wind-gust forecasts for Bratislava from DWD's ICON-D2-RUC-EPS model. The pipeline downloads GRIB2 files, extracts the single grid cell nearest to Bratislava, computes ensemble percentiles and exceedance probabilities, and writes a JSON file per run. A small Flask API serves the forecasts to a static HTML/uPlot dashboard.
+Ensemble forecast dashboard for Bratislava (and X-BIONIC sphere) built on DWD's
+ICON-D2-RUC-EPS rapid-update-cycle ensemble. The pipeline downloads GRIB2
+files, extracts the single grid cell nearest each location, computes ensemble
+percentiles and exceedance probabilities across the 20 members, and writes one
+JSON per run and location. A static HTML/uPlot dashboard renders them.
 
-## Install
+**Live dashboard:** https://imeteo-data.github.io/imeteo-icon-ruc/
 
-```bash
-python -m venv .venv
-.venv/bin/pip install -r requirements.txt
-```
+**Where this fits:** Standalone satellite of the imeteo-data org — no shared
+data flows; org registry:
+https://github.com/imeteo-data/meta/blob/main/docs/system-architecture.md
 
-### Rust extension (optional, ~11× faster)
+## How it works
 
-The GRIB extraction is also available as a Rust/pyo3 extension using rayon for parallel decoding. Build it once into the venv:
+1. **Discover** — list completed runs on DWD open data (or in the local cache).
+2. **Download** — async fetch of every ensemble × step GRIB, cache-aware
+   (files already in `data/raw/` are never re-fetched).
+3. **Extract** — read only the target grid cell from each GRIB (Rust/pyo3
+   extension if built, xarray/cfgrib fallback otherwise).
+4. **Stats** — align ensembles, deaccumulate precipitation, compute
+   p10/p25/p50/p75/p90 and per-threshold exceedance probabilities.
+5. **Write** — `data/forecasts/{run_id}_{location}.json` plus an `index.json`
+   catalog the dashboard reads.
 
-```bash
-.venv/bin/pip install maturin
-.venv/bin/maturin develop --release --manifest-path extract_rs/Cargo.toml
-```
+Variables processed: `TOT_PREC` (5-min precipitation rate, mm/h),
+`VMAX_10M` (hourly max 10 m gust, m/s), `T_2M` (hourly 2 m temperature, °C).
 
-Requires a Rust toolchain (`rustup`) and the `eccodes` C library (macOS: `brew install eccodes`). If the extension isn't built, `pipeline/extract.py` falls back to a pure-Python xarray/cfgrib path automatically.
+## Automation
 
-## Run
+`.github/workflows/forecast.yml` fires **every 15 minutes** (plus manual
+`workflow_dispatch`). Each fire backfills the 12 most recent runs
+(`main.py --runs 12 --backfill` — already-complete runs are skipped, so a
+no-op fire is cheap), trims to the newest 12 runs, and commits changed JSONs
+back to `main`. When forecasts changed, a second job deploys the repo root to
+GitHub Pages via `actions/deploy-pages`. `choose-runner.yml` runs the job on
+the self-hosted `mac-mini-m2` runner when it is online, `ubuntu-latest`
+otherwise.
 
-```bash
-# Process the most recent completed DWD run
-.venv/bin/python main.py
+## Quickstart
 
-# Process N most recent runs
-.venv/bin/python main.py --runs 3
-
-# Process one specific run (e.g. one you already have cached in data/raw/)
-.venv/bin/python main.py --run-id 2025-10-28T0700
-
-# Fully offline — use only files in data/raw/, never touch DWD
-.venv/bin/python main.py --run-id 2025-10-28T0700 --offline
-
-# List cached runs
-.venv/bin/python main.py --list-local
-```
-
-Downloads are cache-aware: files already in `data/raw/` are never re-fetched. Raw GRIBs are preserved after extraction — use `cleanup.py` to trim them.
-
-## Dashboard
-
-```bash
-.venv/bin/python api.py             # serves http://127.0.0.1:5000/
-```
-
-Open `http://127.0.0.1:5000/` in a browser. The dashboard reads from `data/forecasts/*.json` via the API.
-
-## Cleanup
+Needs Python ≥3.12, [uv](https://docs.astral.sh/uv/), and the eccodes C
+library (macOS: `brew install eccodes`; Debian/Ubuntu: `apt install
+libeccodes-dev`).
 
 ```bash
-.venv/bin/python cleanup.py --hours 12           # delete GRIBs older than 12h
-.venv/bin/python cleanup.py --hours 24 --dry-run # preview only
+uv sync --group dev            # install dependencies
+uv run python main.py          # process the most recent completed DWD run
+uv run python api.py           # dashboard at http://127.0.0.1:5000/
+uv run pytest tests/           # test suite
 ```
 
-## Tests
-
-```bash
-.venv/bin/python -m pytest tests/
-```
-
-## Deploy to GitHub Pages (free, 24/7)
-
-The dashboard is fully static once the JSONs exist, so the whole stack is free:
-- **GitHub Actions** runs `main.py` every hour at `:45 UTC` (DWD publishes complete RUC-EPS runs ~30–40 min after each init hour)
-- **GitHub Pages** serves `index.html` + `data/forecasts/*.json` directly from the repo
-
-**One-time setup**
-
-1. Push this repo to a public GitHub repository (private works too but uses your 2,000 min/month Actions quota).
-2. GitHub → Settings → Actions → General → Workflow permissions → **Read and write permissions** (so the scheduled job can commit back).
-3. GitHub → Settings → Pages → Source: **Deploy from a branch** · Branch: `main` · Folder: `/ (root)`.
-4. Wait a couple of minutes, then your dashboard is live at `https://<username>.github.io/<repo>/`.
-
-The workflow at `.github/workflows/refresh.yml` then:
-- Fires hourly at `:45 UTC`
-- Installs `libeccodes-dev` + Python deps
-- Runs `main.py --runs 1` (downloads ~1,740 GRIBs, extracts the Bratislava cell, writes one JSON)
-- Runs `cleanup.py --keep-last 12` to trim old JSONs
-- Commits the JSONs back to `main` if anything changed
-
-The dashboard auto-discovers whether it's running against the Flask dev API (local) or static files on Pages, and falls back gracefully between the two. Typical CI run: ~90 seconds.
-
-## Layout
-
-```
-pipeline/
-  config.py     variable specs, location, URLs, thresholds
-  discover.py   remote + local run discovery, URL/filename helpers
-  download.py   async aiohttp downloader, cache-aware
-  grid.py       ICON grid loader + KDTree, cached on disk
-  extract.py    open GRIB → extract single point → close
-  stats.py      deaccumulation, percentiles, exceedance probs
-  run.py        orchestrator
-main.py         CLI
-api.py          Flask API + dashboard server
-cleanup.py      standalone GRIB cleanup
-index.html  uPlot single-page dashboard
-tests/          pytest suite
-data/
-  raw/          GRIB downloads (preserved between runs)
-  grid/         ICON grid NetCDF + pickled KDTree
-  forecasts/    one JSON file per processed run
-```
-
-## Adding a variable
-
-Add one dict entry to `pipeline/config.py`:
-
-```python
-VARIABLES = {
-    ...,
-    "T_2M": {
-        "grib_var": "t2m",
-        "is_accumulated": False,
-        "step_minutes": 60,
-        "unit": "K",
-        "thresholds": [273.15, 283.15, 293.15],
-    },
-}
-```
-
-The rest of the pipeline works unchanged.
-
-## Forecast JSON shape
-
-```json
-{
-  "run_id": "2025-10-28T0700",
-  "location": {"name": "Bratislava", "lat": 48.1486, "lon": 17.1077},
-  "generated_at": "2025-10-28T10:00:00+00:00",
-  "grid_distance_km": 1.071,
-  "variables": {
-    "TOT_PREC": {
-      "unit": "mm/h",
-      "times": ["2025-10-28T07:00:00Z", ...],
-      "ensemble_members": [[...], [...], ...],
-      "percentiles": {"p10": [...], "p25": [...], "p50": [...], "p75": [...], "p90": [...]},
-      "probability_exceeds": {"0.1": [...], "1.0": [...], "5.0": [...], "10.0": [...]}
-    },
-    "VMAX_10M": { ... same shape ... }
-  }
-}
-```
+An optional Rust extension speeds up GRIB extraction ~5–10×; see
+[CLAUDE.md](CLAUDE.md) for the build command, the full CLI reference, the
+output JSON shape, and operational gotchas.

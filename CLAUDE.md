@@ -1,123 +1,128 @@
-# ICON-D2-RUC-EPS · Bratislava
+# CLAUDE.md
 
-## Purpose
-
-Ensemble precipitation and wind-gust forecasts for Bratislava, Slovakia (48.1629°N, 17.1369°E), from DWD's ICON-D2-RUC-EPS model. The pipeline downloads GRIB2 ensemble files, extracts the single grid cell nearest to Bratislava, computes percentiles and exceedance probabilities across ensemble members, and writes one JSON file per forecast run. A Flask API serves the JSON to a static HTML/uPlot dashboard.
-
-## Data source
-
-- **Server:** `https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc-eps/`
-- **Model:** ICON-D2-RUC-EPS (rapid-update-cycle ensemble, Germany + surrounding)
-- **Grid:** unstructured triangular, 542,040 cells, ~2.5 km resolution
-- **Variables currently processed:**
-  - `TOT_PREC` (accumulated precipitation → deaccumulated to mm/h rate)
-  - `VMAX_10M` (instantaneous 10 m max wind gust in m/s)
-- **Ensembles:** 20 members per run
-- **Forecast range:** ~14 h at 5 min steps for TOT_PREC, ~14 h at 1 h steps for VMAX_10M
+Agent-operational reference. Purpose, pipeline overview, and quickstart live
+in [README.md](README.md).
 
 ## Layout
 
 ```
 pipeline/
-  config.py     variable specs, location, DWD URLs, percentiles, thresholds
-  discover.py   DWD + local discovery, URL/filename helpers
+  config.py     LOCATIONS, VARIABLES, PERCENTILES, DWD URLs, retention
+  discover.py   DWD + local run discovery, URL/filename helpers
   download.py   async aiohttp downloader, skips files already cached
-  grid.py       ICON grid loader + KDTree index (pickled cache)
-  extract.py    per-file point extraction — calls Rust ext if available, xarray fallback
+  grid.py       ICON grid loader + KDTree index (pickled to data/grid/)
+  extract.py    per-file point extraction — Rust ext if built, xarray fallback
   stats.py      deaccumulation, percentiles, exceedance probability
-  run.py        orchestrator
+  run.py        orchestrator, backfill/completeness logic, index.json writer
 extract_rs/     Rust extension (pyo3 + eccodes + rayon) — parallel GRIB decode
 main.py         CLI entry point
-api.py          Flask API + static dashboard server
-cleanup.py      standalone GRIB cleanup by age
-index.html  vanilla HTML + uPlot dashboard
+api.py          Flask API + local dashboard server
+cleanup.py      standalone GRIB/JSON cleanup (by age or keep-last-N)
+index.html      static uPlot dashboard (served as-is by GitHub Pages)
 tests/          pytest suite
 data/
-  raw/          GRIB downloads (preserved across runs)
+  raw/          GRIB downloads (pruned only by cleanup.py / run pruning)
   grid/         ICON grid NetCDF + pickled KDTree
-  forecasts/    output JSON, one file per run_id
+  forecasts/    {run_id}_{location_id}.json per run+location, plus index.json
 ```
 
-## Rust extraction extension (optional but strongly recommended)
+## Commands
 
-`extract_rs/` is a small pyo3 crate that decodes GRIB messages in parallel via rayon. On a typical run it is **~11× faster** than the pure-Python path (full 20-ensemble × 169-step run: ~13 s vs ~2:30). The Python path still exists as a fallback if the extension isn't built.
+```bash
+uv sync --group dev                                # install deps (Python >=3.12)
 
-Build and install:
+uv run python main.py                              # latest completed run
+uv run python main.py --runs 12 --backfill         # what CI does: skip complete runs
+uv run python main.py --run-id 2025-10-28T0700     # one specific run
+uv run python main.py --run-id X --offline         # no network, data/raw/ only
+uv run python main.py --no-wait                    # don't poll DWD for upload completion
+uv run python main.py --list-local                 # list cached runs
+
+uv run python api.py                               # dashboard at http://127.0.0.1:5000/
+
+uv run python cleanup.py --keep-last 12            # keep newest 12 runs (CI uses this)
+uv run python cleanup.py --hours 12 --dry-run      # age-based, preview only
+uv run python cleanup.py --list                    # local runs with sizes
+
+uv run pytest tests/                               # test suite
+```
+
+### Rust extraction extension (optional, ~5–10× faster)
 
 ```bash
 uv run maturin develop --release --manifest-path extract_rs/Cargo.toml
 ```
 
-Requires a Rust toolchain (`rustup` + `cargo ≥1.70`) and the eccodes C library (same lib cfgrib uses; Homebrew: `brew install eccodes`). The extension reads eccodes' `shortName` key directly — so `config.VARIABLES[...]["grib_var"]` must match the GRIB shortName (e.g. `max_i10fg`, not the xarray cfVarName `fg10`).
+Requires a Rust toolchain (`rustup`) and the eccodes C library (macOS:
+`brew install eccodes`; Debian/Ubuntu: `apt install libeccodes-dev`). If the
+extension isn't importable, `pipeline/extract.py` falls back to xarray/cfgrib
+automatically (it prints which backend it picked at import time).
 
-## Key commands
+## Data source
 
-```bash
-uv run python main.py                              # latest run
-uv run python main.py --runs 3                     # 3 most recent runs
-uv run python main.py --run-id 2025-10-28T0700     # specific run
-uv run python main.py --run-id X --offline         # no network, use data/raw/ only
-uv run python main.py --list-local                 # list cached runs
+- Base URL: `https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc-eps/p`
+  (`config.DWD_BASE`), file URLs `{base}/{VAR}/r/{run}/e/{ens}/s/{step}.grib2`.
+- 20 ensemble members per run; hourly model runs. A run is treated as fully
+  uploaded once its horizon reaches `EXPECTED_FORECAST_MINUTES` (800).
+- DWD URLs encode the run time as `YYYY-MM-DDTHH%3A00`; local filenames use
+  the compact `YYYY-MM-DDTHHMM` run_id. `pipeline/discover.py` converts.
+- Grid: `icon_grid_0047_R19B07_L.nc`, downloaded and KDTree-indexed once,
+  cached in `data/grid/`.
 
-uv run python api.py                               # start dashboard server
+## Output JSON
 
-uv run python cleanup.py --hours 12                # trim old GRIBs
-uv run python cleanup.py --hours 24 --dry-run
-
-uv run pytest tests/
-```
-
-## How the pipeline works
-
-1. **discover** lists completed runs (remote DWD or local `data/raw/`).
-2. **grid** loads the ICON grid once (cached as pickled KDTree on disk), finds the nearest cell to Bratislava.
-3. **download** fetches (or reuses cached) GRIB files for every ensemble × step. Async, `Semaphore(20)`.
-4. **extract** opens each GRIB lazily, reads only the single target cell, closes.
-5. **stats** aligns ensembles on shared timestamps, deaccumulates accumulated variables, computes p10/p25/p50/p75/p90 and probability of exceeding per-variable thresholds.
-6. Orchestrator writes `data/forecasts/<run_id>.json`.
-
-## Adding a variable
-
-One dict entry in `pipeline/config.py`:
-
-```python
-VARIABLES = {
-    ...,
-    "T_2M": {"grib_var": "t2m", "is_accumulated": False,
-             "step_minutes": 60, "unit": "K",
-             "thresholds": [273.15, 283.15, 293.15]},
-}
-```
-
-No new class, no adapter. The rest of the pipeline handles it.
-
-## Forecast JSON shape
+One file per run and location: `data/forecasts/{run_id}_{location_id}.json`
+(legacy pre-multi-location deploys used `{run_id}.json`; readers still fall
+back to it). `data/forecasts/index.json` is the static catalog
+(`{locations, runs, generated_at}`) the dashboard loads first.
 
 ```json
 {
-  "run_id": "2025-10-28T0700",
-  "location": {"name": "Bratislava", "lat": 48.1486, "lon": 17.1077},
-  "generated_at": "2025-10-28T10:00:00+00:00",
-  "grid_distance_km": 1.071,
+  "run_id": "2026-07-01T0000",
+  "location_id": "bratislava",
+  "location": {"name": "Bratislava", "lat": 48.1629, "lon": 17.1369},
+  "generated_at": "2026-07-01T01:04:00+00:00",
+  "grid_distance_km": 1.362,
   "variables": {
     "TOT_PREC": {
       "unit": "mm/h",
-      "times": ["..."],
+      "times": ["2026-07-01T00:05:00Z", "..."],
       "ensemble_members": [[...], ...],
       "percentiles": {"p10": [...], "p25": [...], "p50": [...], "p75": [...], "p90": [...]},
       "probability_exceeds": {"0.1": [...], "1.0": [...], "5.0": [...], "10.0": [...]}
     },
-    "VMAX_10M": { ... }
+    "VMAX_10M": { "...": "same shape, m/s" },
+    "T_2M": { "...": "same shape, °C" }
   }
 }
 ```
 
-## Dependencies
+## Adding a variable / location
 
-Managed by uv via `pyproject.toml` and `uv.lock`. Install with `uv sync --group dev`.
+Both are single dict entries in `pipeline/config.py` (`VARIABLES` /
+`LOCATIONS`); the rest of the pipeline handles them. Variable options:
+`grib_var`, `is_accumulated`, `step_minutes`, `unit`, `thresholds`, plus
+optional `skip_first_step` (drop bogus t=0, see VMAX_10M) and `offset`
+(unit shift, see T_2M's Kelvin→Celsius).
 
-## Notes
+## Gotchas
 
-- Files in `data/raw/` are never auto-deleted. Use `cleanup.py` explicitly.
-- DWD URL encodes the run time as `YYYY-MM-DDTHH%3A00`; local filenames use the compact `YYYY-MM-DDTHHMM` form. `pipeline/discover.py` handles the conversion.
-- The pipeline runs fully offline from `data/raw/` with `--offline` — no DWD discovery, no downloads. Useful on slow connections.
+- **The scheduled workflow commits to `main` every 15 minutes**
+  (`.github/workflows/forecast.yml`, cron `*/15 * * * *`, auto-commits
+  `data/forecasts/`). Always `git pull` before working, and expect
+  `git push` races on `main`.
+- `choose-runner.yml` selects the Actions runner: self-hosted `mac-mini-m2`
+  when online, `ubuntu-latest` otherwise. CI installs `libeccodes-dev` only
+  on Linux — the mac runner must have eccodes installed already.
+- `grib_var` must be the **eccodes shortName** (e.g. `max_i10fg`, `2t`), not
+  the xarray cfVarName (`fg10`, `t2m`) — the Rust extension reads the
+  shortName key directly.
+- eccodes/cfgrib are native deps: without the eccodes C library neither the
+  Python fallback nor the Rust extension can decode GRIBs.
+- `config.FORECAST_RETAIN` (12) must stay ≥ the workflow's `--runs` backfill
+  window and `cleanup.py --keep-last` value, or backfilled runs get pruned
+  and re-downloaded every cycle.
+- Files in `data/raw/` are only deleted by `cleanup.py` or the automatic
+  pruning of runs older than the newest `FORECAST_RETAIN`.
+- Fully offline operation: `--offline` uses `data/raw/` only — no DWD
+  discovery, no downloads.
