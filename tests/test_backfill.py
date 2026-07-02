@@ -13,12 +13,18 @@ from pipeline import config, discover, run
 
 
 def _write_run(dirpath, run_id: str, last_time_iso: str, var: str = "TOT_PREC"):
-    p = dirpath / f"{run_id}.json"
-    p.write_text(json.dumps({
-        "run_id": run_id,
-        "variables": {var: {"times": ["2026-05-29T10:00:00Z", last_time_iso]}},
-    }))
-    return p
+    """One forecast JSON per configured location ({run_id}_{location_id}.json),
+    matching what run.process_run writes since the multi-location change."""
+    paths = []
+    for loc_id in config.LOCATIONS:
+        p = dirpath / f"{run_id}_{loc_id}.json"
+        p.write_text(json.dumps({
+            "run_id": run_id,
+            "location_id": loc_id,
+            "variables": {var: {"times": ["2026-05-29T10:00:00Z", last_time_iso]}},
+        }))
+        paths.append(p)
+    return paths
 
 
 # ── discover._step_to_minutes ──────────────────────────────
