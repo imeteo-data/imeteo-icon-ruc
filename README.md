@@ -1,10 +1,17 @@
-# ICON-D2-RUC-EPS · Bratislava
+# ICON-D2-RUC · Bratislava
 
 Ensemble forecast dashboard for Bratislava (and X-BIONIC sphere) built on DWD's
-ICON-D2-RUC-EPS rapid-update-cycle ensemble. The pipeline downloads GRIB2
+ICON-D2-RUC rapid-update-cycle model. The pipeline downloads GRIB2
 files, extracts the single grid cell nearest each location, computes ensemble
-percentiles and exceedance probabilities across the 20 members, and writes one
+percentiles and exceedance probabilities across the members, and writes one
 JSON per run and location. A static HTML/uPlot dashboard renders them.
+
+> **Stopgap notice:** DWD discontinued the ensemble source (ICON-D2-RUC-EPS,
+> 20 members) in mid-2026; the pipeline currently runs on its deterministic
+> sibling ICON-D2-RUC (1 member) so the dashboard keeps publishing.
+> Percentiles/exceedance probabilities collapse to that single member's value
+> until a real ensemble source is wired in. See CLAUDE.md's "Data source"
+> section for the technical detail and migration path.
 
 **Live dashboard:** https://imeteo-data.github.io/imeteo-icon-ruc/
 
