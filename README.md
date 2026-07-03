@@ -1,6 +1,6 @@
 # ICON-D2-RUC · Bratislava
 
-Ensemble forecast dashboard for Bratislava (and X-BIONIC sphere) built on DWD's
+Ensemble forecast dashboard for Bratislava (and Pohoda / Letisko Trenčín) built on DWD's
 ICON-D2-RUC rapid-update-cycle model. The pipeline downloads GRIB2
 files, extracts the single grid cell nearest each location, computes ensemble
 percentiles and exceedance probabilities across the members, and writes one
