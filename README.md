@@ -14,11 +14,15 @@ https://github.com/imeteo-data/meta/blob/main/docs/system-architecture.md
 
 ## How it works
 
-1. **Discover** — list completed runs on DWD open data (or in the local cache).
+1. **Discover** — list completed runs on DWD open data (or in the local
+   cache). If the ensemble source is down, the pipeline falls back
+   automatically to the deterministic ICON-D2-RUC (single member, flagged
+   on the dashboard) until the ensemble returns.
 2. **Download** — async fetch of every ensemble × step GRIB, cache-aware
    (files already in `data/raw/` are never re-fetched).
-3. **Extract** — read only the target grid cell from each GRIB (Rust/pyo3
-   extension if built, xarray/cfgrib fallback otherwise).
+3. **Extract** — decode each GRIB once and read every location's grid cell
+   in one pass (Rust/pyo3 extension if built, xarray/cfgrib fallback
+   otherwise).
 4. **Stats** — align ensembles, deaccumulate precipitation, compute
    p10/p25/p50/p75/p90 and per-threshold exceedance probabilities.
 5. **Write** — `data/forecasts/{run_id}_{location}.json` plus an `index.json`

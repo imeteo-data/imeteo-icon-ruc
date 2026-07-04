@@ -1,0 +1,45 @@
+name: Tests
+
+# PR gate: builds the Rust extraction extension and runs the test suite
+# against it, so extraction changes are proven on the real backend before
+# merge (the synthetic-GRIB tests in tests/test_extract.py need no data/raw).
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths: ["pipeline/**", "extract_rs/**", "tests/**", "main.py"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install eccodes
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libeccodes-dev libeccodes-tools
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: uv sync --group dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: extract_rs
+
+      - name: Build Rust extraction extension
+        run: uv run maturin develop --release --manifest-path extract_rs/Cargo.toml
+
+      - name: Assert Rust backend is active
+        run: uv run python -c "from pipeline import extract; assert extract._RUST_AVAILABLE, 'extract_rs not importable'"
+
+      - name: Run tests
+        run: uv run pytest tests/ -q

@@ -7,11 +7,12 @@ in [README.md](README.md).
 
 ```
 pipeline/
-  config.py     LOCATIONS, VARIABLES, PERCENTILES, DWD URLs, retention
-  discover.py   DWD + local run discovery, URL/filename helpers
+  config.py     LOCATIONS, VARIABLES, PERCENTILES, DWD_SOURCES, retention
+  discover.py   DWD source resolution + run discovery, URL/filename helpers
   download.py   async aiohttp downloader, skips files already cached
   grid.py       ICON grid loader + KDTree index (pickled to data/grid/)
-  extract.py    per-file point extraction — Rust ext if built, xarray fallback
+  extract.py    multi-point extraction — Rust ext if built, xarray fallback;
+                each GRIB decoded once, sampled at every location's cell
   stats.py      deaccumulation, percentiles, exceedance probability
   run.py        orchestrator, backfill/completeness logic, index.json writer
 extract_rs/     Rust extension (pyo3 + eccodes + rayon) — parallel GRIB decode
@@ -60,19 +61,18 @@ automatically (it prints which backend it picked at import time).
 
 ## Data source
 
-- Source is `icon-d2-ruc-eps` (20-member ensemble). DWD briefly discontinued
-  it (404 2026-07-02, back 2026-07-04); during the outage the pipeline ran on
-  its deterministic sibling `icon-d2-ruc` — same URL/file layout minus the
-  `e/{ens}/` segment. That fallback is kept, gated by
-  `config.DWD_HAS_ENSEMBLE` in `pipeline/discover.py` (`build_url`,
-  `list_remote_ensembles`, `list_remote_steps`): set it to `False` and point
-  `DWD_BASE` at `.../icon-d2-ruc/p` to switch back; a synthetic single member
-  id (`"00"`) keeps `extract.py`/`stats.py`/local filenames unchanged (with
-  one member, `percentiles`/`probability_exceeds` collapse to that member's
-  value, and the dashboard shows a SINGLE-MEMBER badge).
-- Base URL: `https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc-eps/p`
-  (`config.DWD_BASE`), file URLs `{base}/{VAR}/r/{run}/e/{ens}/s/{step}.grib2`
-  (the deterministic fallback drops the `/e/{ens}` segment).
+- Source is `icon-d2-ruc-eps` (20-member ensemble), with **automatic
+  fallback** to its deterministic sibling `icon-d2-ruc` — same URL/file
+  layout minus the `e/{ens}/` segment — when the ensemble source is down
+  (as during DWD's 2026-07-02 → 2026-07-04 outage). `config.DWD_SOURCES`
+  lists both in priority order; `discover.active_source()` probes each run
+  index once per process and memoizes the first that answers with runs.
+  On the fallback, a synthetic single member id (`"00"`) keeps
+  `extract.py`/`stats.py`/local filenames unchanged; `percentiles` /
+  `probability_exceeds` collapse to that member's value and the dashboard
+  shows a SINGLE-MEMBER badge (data-driven off `ensemble_members` length).
+- File URLs: `{base}/{VAR}/r/{run}/e/{ens}/s/{step}.grib2` under the
+  ensemble source; the deterministic fallback drops the `/e/{ens}` segment.
 - 20 members per run (ids `01`–`20`, listed dynamically); hourly model runs,
   ~27h horizon. A run is treated as fully uploaded once its horizon reaches
   `EXPECTED_FORECAST_MINUTES` (800).
@@ -126,9 +126,10 @@ optional `skip_first_step` (drop bogus t=0, see VMAX_10M) and `offset`
 - `choose-runner.yml` selects the Actions runner: self-hosted `mac-mini-m2`
   when online, `ubuntu-latest` otherwise. CI installs `libeccodes-dev` only
   on Linux — the mac runner must have eccodes installed already.
-- `grib_var` must be the **eccodes shortName** (e.g. `max_i10fg`, `2t`), not
-  the xarray cfVarName (`fg10`, `t2m`) — the Rust extension reads the
-  shortName key directly.
+- `grib_var` should be the **eccodes shortName** (e.g. `max_i10fg`, `2t`),
+  not the xarray cfVarName (`fg10`, `t2m`). Only the Python fallback uses it
+  (to pick the data variable); the Rust extension never checks it — files are
+  single-message and pre-filtered by filename.
 - eccodes/cfgrib are native deps: without the eccodes C library neither the
   Python fallback nor the Rust extension can decode GRIBs.
 - `config.FORECAST_RETAIN` (12) must stay ≥ the workflow's `--runs` backfill

@@ -54,14 +54,25 @@ PERCENTILES = [10, 25, 50, 75, 90]
 # re-downloaded next run. It also bounds how many runs the dashboard shows.
 FORECAST_RETAIN = 12
 
-# icon-d2-ruc-eps: 20-member ensemble, hourly runs, 5-min TOT_PREC steps.
-# DWD briefly discontinued it (404 2026-07-02 → back 2026-07-04); during the
-# outage we ran its deterministic sibling icon-d2-ruc (same layout minus the
-# e/{ensemble}/ segment). DWD_HAS_ENSEMBLE=False restores that stopgap should
-# the ensemble source disappear again — percentiles/probability_exceeds then
-# collapse to the single member's value.
-DWD_BASE = "https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc-eps/p"
-DWD_HAS_ENSEMBLE = True
+# DWD sources in priority order. discover.active_source() probes each run
+# index at process start and uses the first that answers with runs, so an
+# outage of the 20-member ensemble (as happened 2026-07-02 → 2026-07-04)
+# degrades automatically to its deterministic sibling — same URL/file layout
+# minus the e/{ensemble}/ segment — instead of breaking the pipeline. With
+# one member, percentiles/probability_exceeds collapse to that member's value
+# and the dashboard shows a SINGLE-MEMBER badge.
+DWD_SOURCES = (
+    {
+        "name": "icon-d2-ruc-eps",
+        "base": "https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc-eps/p",
+        "has_ensemble": True,
+    },
+    {
+        "name": "icon-d2-ruc",
+        "base": "https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc/p",
+        "has_ensemble": False,
+    },
+)
 GRID_URL = "https://opendata.dwd.de/weather/lib/cdo/icon_grid_0047_R19B07_L.nc.bz2"
 GRID_FILE = GRID_DIR / "icon_grid_0047_R19B07_L.nc"
 KDTREE_CACHE = GRID_DIR / "kdtree.pkl"

@@ -32,40 +32,77 @@ def url_to_run_id(run_url: str) -> str:
 
 
 def local_filename(variable: str, run_id: str, ensemble: str, step: str) -> str:
+    # Prefix is a cache namespace, kept stable across sources so files cached
+    # under one source are reused when the other is active.
     return f"icon_d2_ruc_eps_{variable}_{run_id}_e{ensemble}_{step}.grib2"
 
 
-def build_url(variable: str, run_id: str, ensemble: str, step: str) -> str:
-    run_url = run_id_to_url(run_id)
-    if not config.DWD_HAS_ENSEMBLE:
-        return f"{config.DWD_BASE}/{variable}/r/{run_url}/s/{step}.grib2"
-    return f"{config.DWD_BASE}/{variable}/r/{run_url}/e/{ensemble}/s/{step}.grib2"
+_active_source: dict | None = None
 
 
-def list_remote_runs(variable: str = "TOT_PREC", limit: int | None = None) -> list[str]:
-    """Fetch DWD index for variable, return run_ids newest first."""
-    url = f"{config.DWD_BASE}/{variable}/r/"
+def _get_index(url: str) -> BeautifulSoup:
     resp = requests.get(url, timeout=30, headers={"User-Agent": config.HTTP_USER_AGENT})
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.content, "html.parser")
+    return BeautifulSoup(resp.content, "html.parser")
+
+
+def _list_runs(source: dict, variable: str) -> list[str]:
+    soup = _get_index(f"{source['base']}/{variable}/r/")
     pattern = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2})/")
     runs = sorted({pattern.search(a.get("href", "")).group(1)
                    for a in soup.find_all("a")
                    if pattern.search(a.get("href", ""))}, reverse=True)
-    ids = [url_to_run_id(r) for r in runs]
+    return [url_to_run_id(r) for r in runs]
+
+
+def active_source(refresh: bool = False) -> dict:
+    """First entry of config.DWD_SOURCES whose run index answers with runs.
+
+    Probed once per process (memoized) so every URL built afterwards targets
+    one consistent source; `refresh=True` re-probes. Raises the primary
+    source's error when no source is reachable — callers already treat
+    discovery failures as "fall back to local data".
+    """
+    global _active_source
+    if _active_source is not None and not refresh:
+        return _active_source
+    first_error: Exception | None = None
+    for source in config.DWD_SOURCES:
+        try:
+            if _list_runs(source, "TOT_PREC"):
+                if source is not config.DWD_SOURCES[0]:
+                    print(f"  ⚠ {config.DWD_SOURCES[0]['name']} unavailable — "
+                          f"falling back to {source['name']} (single member)")
+                _active_source = source
+                return source
+        except requests.RequestException as e:
+            first_error = first_error or e
+    raise first_error or requests.RequestException(
+        "no DWD source lists any runs")
+
+
+def build_url(variable: str, run_id: str, ensemble: str, step: str) -> str:
+    source = active_source()
+    run_url = run_id_to_url(run_id)
+    if not source["has_ensemble"]:
+        return f"{source['base']}/{variable}/r/{run_url}/s/{step}.grib2"
+    return f"{source['base']}/{variable}/r/{run_url}/e/{ensemble}/s/{step}.grib2"
+
+
+def list_remote_runs(variable: str = "TOT_PREC", limit: int | None = None) -> list[str]:
+    """Fetch DWD index for variable, return run_ids newest first."""
+    ids = _list_runs(active_source(), variable)
     return ids[:limit] if limit else ids
 
 
 def list_remote_ensembles(variable: str, run_id: str) -> list[str]:
-    if not config.DWD_HAS_ENSEMBLE:
+    source = active_source()
+    if not source["has_ensemble"]:
         # Deterministic source: no e/{ensemble}/ layer. Use a synthetic single
         # member id so the rest of the pipeline (filenames, extract, stats)
         # doesn't need to know the difference.
         return ["00"]
-    url = f"{config.DWD_BASE}/{variable}/r/{run_id_to_url(run_id)}/e/"
-    resp = requests.get(url, timeout=30, headers={"User-Agent": config.HTTP_USER_AGENT})
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.content, "html.parser")
+    soup = _get_index(f"{source['base']}/{variable}/r/{run_id_to_url(run_id)}/e/")
     ens = sorted({a.get("href", "")[:-1] for a in soup.find_all("a")
                   if a.get("href", "").endswith("/") and a.get("href", "")[:-1].isdigit()},
                  key=int)
@@ -73,13 +110,12 @@ def list_remote_ensembles(variable: str, run_id: str) -> list[str]:
 
 
 def list_remote_steps(variable: str, run_id: str, ensemble: str) -> list[str]:
-    if config.DWD_HAS_ENSEMBLE:
-        url = f"{config.DWD_BASE}/{variable}/r/{run_id_to_url(run_id)}/e/{ensemble}/s/"
+    source = active_source()
+    if source["has_ensemble"]:
+        url = f"{source['base']}/{variable}/r/{run_id_to_url(run_id)}/e/{ensemble}/s/"
     else:
-        url = f"{config.DWD_BASE}/{variable}/r/{run_id_to_url(run_id)}/s/"
-    resp = requests.get(url, timeout=30, headers={"User-Agent": config.HTTP_USER_AGENT})
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.content, "html.parser")
+        url = f"{source['base']}/{variable}/r/{run_id_to_url(run_id)}/s/"
+    soup = _get_index(url)
     steps = sorted({a.get("href", "").replace(".grib2", "")
                     for a in soup.find_all("a")
                     if a.get("href", "").endswith(".grib2") and "PT" in a.get("href", "")})
