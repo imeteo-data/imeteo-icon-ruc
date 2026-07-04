@@ -60,24 +60,21 @@ automatically (it prints which backend it picked at import time).
 
 ## Data source
 
-- **DWD discontinued icon-d2-ruc-eps (404 since ~2026-07-02).** Current
-  source is `icon-d2-ruc` — its deterministic sibling, same URL/file layout
-  minus the `e/{ens}/` segment. `config.DWD_HAS_ENSEMBLE = False` gates this
-  in `pipeline/discover.py` (`build_url`, `list_remote_ensembles`,
-  `list_remote_steps`); a synthetic single member id (`"00"`) keeps
-  `extract.py`/`stats.py`/local filenames unchanged. **This is a stopgap**:
-  with one member, `percentiles` and `probability_exceeds` collapse to the
-  single member's value (flat line / binary). A real fix means migrating to
-  `icon-d2-eps` (true 20-member ensemble) — a much larger rework: different
-  URL layout (`icon-d2-eps/grib/{HH}/{var}/`), bz2-compressed files bundling
-  all members per step (not one file per member), hourly-only steps, 8
-  runs/day instead of hourly, and no dated run archive on DWD's side (so
-  remote `--backfill` can't recover missed runs the way it can today).
-- Base URL: `https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc/p`
-  (`config.DWD_BASE`), file URLs `{base}/{VAR}/r/{run}/s/{step}.grib2`
-  (ensemble source would insert `/e/{ens}` before `/s/`).
-- 1 member per run (was 20 under icon-d2-ruc-eps); hourly model runs, ~27h
-  horizon. A run is treated as fully uploaded once its horizon reaches
+- Source is `icon-d2-ruc-eps` (20-member ensemble). DWD briefly discontinued
+  it (404 2026-07-02, back 2026-07-04); during the outage the pipeline ran on
+  its deterministic sibling `icon-d2-ruc` — same URL/file layout minus the
+  `e/{ens}/` segment. That fallback is kept, gated by
+  `config.DWD_HAS_ENSEMBLE` in `pipeline/discover.py` (`build_url`,
+  `list_remote_ensembles`, `list_remote_steps`): set it to `False` and point
+  `DWD_BASE` at `.../icon-d2-ruc/p` to switch back; a synthetic single member
+  id (`"00"`) keeps `extract.py`/`stats.py`/local filenames unchanged (with
+  one member, `percentiles`/`probability_exceeds` collapse to that member's
+  value, and the dashboard shows a SINGLE-MEMBER badge).
+- Base URL: `https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc-eps/p`
+  (`config.DWD_BASE`), file URLs `{base}/{VAR}/r/{run}/e/{ens}/s/{step}.grib2`
+  (the deterministic fallback drops the `/e/{ens}` segment).
+- 20 members per run (ids `01`–`20`, listed dynamically); hourly model runs,
+  ~27h horizon. A run is treated as fully uploaded once its horizon reaches
   `EXPECTED_FORECAST_MINUTES` (800).
 - DWD URLs encode the run time as `YYYY-MM-DDTHH%3A00`; local filenames use
   the compact `YYYY-MM-DDTHHMM` run_id. `pipeline/discover.py` converts.
