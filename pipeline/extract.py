@@ -1,10 +1,13 @@
-"""Single-point extraction from GRIB files.
+"""Multi-point extraction from GRIB files.
 
 Prefers the native `extract_rs` Rust extension (parallel, ~5-10× faster).
 Falls back to a pure-Python xarray/cfgrib path if the extension is absent.
+Either way each GRIB is decoded once and sampled at every requested cell,
+so extraction cost does not grow with the number of dashboard locations.
 """
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -24,10 +27,17 @@ except ImportError:
 
 print(f"  extract backend: {'Rust (extract_rs)' if _RUST_AVAILABLE else 'Python (xarray fallback)'}")
 
+# One extracted time series per ensemble member: {member_id: [(time, value)]}
+Series = dict[str, list[tuple[np.datetime64, float]]]
 
-def _read_point_python(path: Path, grib_var: str, cell_index: int
-                       ) -> tuple[np.datetime64, float] | None:
-    """Fallback: pure-Python per-file extract using xarray + cfgrib."""
+
+def _read_points_python(path: Path, grib_var: str, cell_indices: list[int]
+                        ) -> tuple[np.datetime64, list[float]] | None:
+    """Fallback: pure-Python per-file extract using xarray + cfgrib.
+
+    Mirrors the Rust extension's semantics: None for an unreadable file,
+    NaN for individual bad cells.
+    """
     import xarray as xr  # local import so Rust users don't pay for it
     try:
         ds = xr.open_dataset(path, engine="cfgrib",
@@ -38,31 +48,30 @@ def _read_point_python(path: Path, grib_var: str, cell_index: int
     try:
         if grib_var not in ds.data_vars:
             grib_var = next(iter(ds.data_vars))
-        arr = ds[grib_var].values
-        value = float(arr.flat[cell_index])
-        if np.isnan(value):
-            return None
+        flat = ds[grib_var].values.flat
+        n = ds[grib_var].size
+        values = [float(flat[i]) if i < n else math.nan for i in cell_indices]
         # Use cfgrib's exact `valid_time` coordinate. Computing it as
         # `time + step` instead lands one nanosecond short for some sub-hourly
         # steps (cfgrib stores `step` as float hours), so a 13:05:00 frame
         # truncates to 13:04:59 — off the 5-minute grid, leaving gaps in the
         # dashboard's run-evolution chart.
-        return ds.valid_time.values, value
+        return ds.valid_time.values, values
     finally:
         ds.close()
 
 
-def extract_variable(paths: list[Path], variable: str, cell_index: int
-                     ) -> dict[str, list[tuple[np.datetime64, float]]]:
-    """Extract point series per ensemble from local GRIB files.
+def extract_variable(paths: list[Path], variable: str, cell_indices: list[int]
+                     ) -> list[Series]:
+    """Extract per-ensemble point series at each cell from local GRIB files.
 
-    Returns {ensemble_id: [(time, value), ...]} sorted by time.
-    Uses the Rust extension if available; otherwise falls back to xarray.
+    Returns one Series per entry in `cell_indices` (parallel lists), each
+    sorted by time. NaN cells (outside the model domain / missing) are
+    dropped from their series without affecting the other cells.
     """
     grib_var = config.VARIABLES[variable]["grib_var"]
-    by_ens: dict[str, list[tuple[np.datetime64, float]]] = defaultdict(list)
 
-    # Group paths by ensemble first so we can pair Rust results back to them.
+    # Group paths by ensemble first so we can pair results back to them.
     ens_paths: dict[str, list[Path]] = defaultdict(list)
     for path in paths:
         parsed = discover.parse_filename(path)
@@ -71,26 +80,28 @@ def extract_variable(paths: list[Path], variable: str, cell_index: int
         _, _, ensemble, _ = parsed
         ens_paths[ensemble].append(path)
 
+    flat = [(ens, p) for ens, ps in ens_paths.items() for p in ps]
+    per_cell: list[Series] = [defaultdict(list) for _ in cell_indices]
+    if not flat:
+        return [dict(s) for s in per_cell]
+
     if _RUST_AVAILABLE:
         # One parallel Rust call per variable — rayon scales across cores.
-        flat = [(ens, p) for ens, ps in ens_paths.items() for p in ps]
-        if not flat:
-            return {}
         results = extract_rs.extract_points(
-            [str(p) for _, p in flat], cell_index, grib_var
+            [str(p) for _, p in flat], cell_indices
         )
-        for (ensemble, _path), result in zip(flat, results):
-            if result is None:
-                continue
-            epoch_s, value = result
-            t = np.datetime64(int(epoch_s), "s")
-            by_ens[ensemble].append((t, value))
+        results = ((np.datetime64(int(r[0]), "s"), r[1]) if r else None
+                   for r in results)
     else:
-        for ensemble, ps in ens_paths.items():
-            for path in ps:
-                result = _read_point_python(path, grib_var, cell_index)
-                if result is None:
-                    continue
-                by_ens[ensemble].append(result)
+        results = (_read_points_python(p, grib_var, cell_indices)
+                   for _, p in flat)
 
-    return {ens: sorted(items, key=lambda x: x[0]) for ens, items in by_ens.items()}
+    for (ensemble, _path), result in zip(flat, results):
+        if result is None:
+            continue
+        t, values = result
+        for series, value in zip(per_cell, values):
+            if not math.isnan(value):
+                series[ensemble].append((t, value))
+
+    return [{ens: sorted(items) for ens, items in s.items()} for s in per_cell]

@@ -65,12 +65,27 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
     config.ensure_dirs()
     outputs = []
 
+    # Resolve every location's grid cell up front so each variable's GRIBs
+    # are decoded once and sampled at all cells in a single pass.
+    cells: dict[str, tuple[int, float]] = {}
     for loc_id, loc_cfg in config.LOCATIONS.items():
-        cell_index, distance_km = grid.nearest_index(
-            tree, loc_cfg["lat"], loc_cfg["lon"]
-        )
-        print(f"  [{loc_id}] nearest grid cell: idx={cell_index} ({distance_km:.2f} km)")
+        cells[loc_id] = grid.nearest_index(tree, loc_cfg["lat"], loc_cfg["lon"])
+        print(f"  [{loc_id}] nearest grid cell: idx={cells[loc_id][0]} "
+              f"({cells[loc_id][1]:.2f} km)")
+    cell_indices = [cell for cell, _ in cells.values()]
 
+    # {variable: [series per location, parallel to config.LOCATIONS order]}
+    var_series: dict[str, list[extract.Series]] = {}
+    for var_name, paths in var_paths.items():
+        if not paths:
+            print(f"  {var_name}: skipped (no files)")
+            continue
+        print(f"  {var_name}: extracting {len(cell_indices)} cells "
+              f"from {len(paths)} files...")
+        var_series[var_name] = extract.extract_variable(paths, var_name, cell_indices)
+
+    for loc_pos, (loc_id, loc_cfg) in enumerate(config.LOCATIONS.items()):
+        _, distance_km = cells[loc_id]
         loc_output = {
             "run_id": run_id,
             "location_id": loc_id,
@@ -79,12 +94,8 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
             "grid_distance_km": round(distance_km, 3),
             "variables": {},
         }
-        for var_name, paths in var_paths.items():
-            if not paths:
-                print(f"  [{loc_id}] {var_name}: skipped (no files)")
-                continue
-            print(f"  [{loc_id}] {var_name}: extracting from {len(paths)} files...")
-            series = extract.extract_variable(paths, var_name, cell_index)
+        for var_name, series_per_cell in var_series.items():
+            series = series_per_cell[loc_pos]
             loc_output["variables"][var_name] = stats.build_variable_output(series, var_name)
             print(f"  [{loc_id}] {var_name}: {len(series)} members, "
                   f"{len(loc_output['variables'][var_name]['times'])} timestamps")

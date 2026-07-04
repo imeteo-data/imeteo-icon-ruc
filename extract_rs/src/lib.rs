@@ -1,20 +1,25 @@
-//! Fast parallel single-point extraction from GRIB2 files for icon-ruc.
+//! Fast parallel multi-point extraction from GRIB2 files for icon-ruc.
 //!
-//! Exposes one Python function: `extract_points(paths, cell_index, grib_var)`.
+//! Exposes one Python function: `extract_points(paths, cell_indices)`.
+//! Each file is decoded once and sampled at every requested cell, so adding
+//! dashboard locations costs nothing beyond the array lookups.
 
 use eccodes::{CodesFile, FallibleIterator, KeyRead, ProductKind};
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::path::Path;
 
-/// Read one (timestamp_seconds, value) for the named variable at `cell_index`.
-/// Returns None on any failure, out-of-bounds, or NaN/missing value.
+/// Read (timestamp_seconds, values at `cell_indices`) from one GRIB file.
+///
+/// Returns None when the file can't be decoded. Per-cell failures
+/// (out-of-bounds, NaN, DWD's missing-value sentinel) become NaN in the
+/// returned vector so one bad cell doesn't discard the others.
 ///
 /// Files are pre-filtered by filename so each contains exactly one message
-/// for the right variable. We extract the first message without checking
-/// shortName — DWD-specific variables (e.g. max_i10fg, paramId 237318) resolve
-/// to "unknown" on systems without DWD's eccodes definition tables.
-fn extract_one(path: &str, cell_index: usize, _grib_var: &str) -> Option<(i64, f64)> {
+/// for the right variable; shortName is never checked — DWD-specific
+/// variables (e.g. max_i10fg, paramId 237318) resolve to "unknown" on
+/// systems without DWD's eccodes definition tables.
+fn extract_one(path: &str, cell_indices: &[usize]) -> Option<(i64, Vec<f64>)> {
     let mut handle = CodesFile::new_from_file(Path::new(path), ProductKind::GRIB).ok()?;
     let mut iter = handle.ref_message_iter();
     let msg = match iter.next() {
@@ -33,19 +38,16 @@ fn extract_one(path: &str, cell_index: usize, _grib_var: &str) -> Option<(i64, f
     );
 
     let values: Vec<f64> = msg.read_key("values").ok()?;
-    if cell_index >= values.len() {
-        return None;
-    }
-    let v = values[cell_index];
-    if v.is_nan() {
-        return None;
-    }
     // DWD uses 9999.0 as a missing-value sentinel outside the model domain.
     let missing: f64 = msg.read_key("missingValue").unwrap_or(9999.0);
-    if (v - missing).abs() < 1e-6 {
-        return None;
-    }
-    Some((epoch, v))
+    let picked = cell_indices
+        .iter()
+        .map(|&i| match values.get(i) {
+            Some(&v) if !v.is_nan() && (v - missing).abs() >= 1e-6 => v,
+            _ => f64::NAN,
+        })
+        .collect();
+    Some((epoch, picked))
 }
 
 /// Howard Hinnant's days_from_civil algorithm, to UNIX seconds.
@@ -61,20 +63,20 @@ fn civil_to_unix(y: i32, m: u32, d: u32, h: u32, mn: u32) -> i64 {
     days * 86400 + (h as i64) * 3600 + (mn as i64) * 60
 }
 
-/// Extract (timestamp_seconds, value) for `grib_var` at `cell_index` from each path.
-/// Returns a list parallel to `paths`. Entries for failed/NaN/missing files are None.
+/// Extract (timestamp_seconds, [value at each cell_index]) from each path.
+/// Returns a list parallel to `paths`; unreadable files are None, individual
+/// bad cells are NaN.
 #[pyfunction]
-#[pyo3(signature = (paths, cell_index, grib_var))]
+#[pyo3(signature = (paths, cell_indices))]
 fn extract_points(
     py: Python<'_>,
     paths: Vec<String>,
-    cell_index: usize,
-    grib_var: String,
-) -> PyResult<Vec<Option<(i64, f64)>>> {
+    cell_indices: Vec<usize>,
+) -> PyResult<Vec<Option<(i64, Vec<f64>)>>> {
     py.allow_threads(|| {
-        let out: Vec<Option<(i64, f64)>> = paths
+        let out: Vec<Option<(i64, Vec<f64>)>> = paths
             .par_iter()
-            .map(|p| extract_one(p, cell_index, &grib_var))
+            .map(|p| extract_one(p, &cell_indices))
             .collect();
         Ok(out)
     })
