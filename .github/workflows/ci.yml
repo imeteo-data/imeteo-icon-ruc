@@ -1,8 +1,10 @@
-name: Tests
+name: CI
 
 # PR gate: builds the Rust extraction extension and runs the test suite
 # against it, so extraction changes are proven on the real backend before
 # merge (the synthetic-GRIB tests in tests/test_extract.py need no data/raw).
+# The push paths filter keeps the every-15-min forecast auto-commits from
+# triggering CI.
 on:
   pull_request:
   push:
@@ -10,8 +12,15 @@ on:
     paths: ["pipeline/**", "extract_rs/**", "tests/**", "main.py"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  lint-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -20,9 +29,10 @@ jobs:
       - name: Install eccodes
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libeccodes-dev libeccodes-tools
 
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@v8
         with:
           python-version: "3.12"
+          enable-cache: true
 
       - name: Install Python deps
         run: uv sync --group dev
