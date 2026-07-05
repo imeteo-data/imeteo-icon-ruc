@@ -10,14 +10,21 @@ on:
 jobs:
   pick:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       runner: ${{ steps.check.outputs.runner }}
     steps:
       - name: Check self-hosted runner availability
         id: check
         env:
+          OVERRIDE: ${{ vars.RUNNER_LABEL }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ -n "${OVERRIDE:-}" ]; then
+            echo "Runner: $OVERRIDE (vars.RUNNER_LABEL override)"
+            echo "runner=$OVERRIDE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           status=$(gh api repos/${{ github.repository }}/actions/runners \
             --jq '.runners[] | select(.name=="mac-mini-m2") | .status' 2>/dev/null || echo "offline")
           if [ "$status" = "online" ]; then
