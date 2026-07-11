@@ -9,6 +9,10 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::path::Path;
 
+/// One file's extraction result: (validity time as UNIX seconds, values at
+/// each requested cell), or None when the file couldn't be decoded.
+type PointSeries = Option<(i64, Vec<f64>)>;
+
 /// Read (timestamp_seconds, values at `cell_indices`) from one GRIB file.
 ///
 /// Returns None when the file can't be decoded. Per-cell failures
@@ -19,7 +23,7 @@ use std::path::Path;
 /// for the right variable; shortName is never checked — DWD-specific
 /// variables (e.g. max_i10fg, paramId 237318) resolve to "unknown" on
 /// systems without DWD's eccodes definition tables.
-fn extract_one(path: &str, cell_indices: &[usize]) -> Option<(i64, Vec<f64>)> {
+fn extract_one(path: &str, cell_indices: &[usize]) -> PointSeries {
     let mut handle = CodesFile::new_from_file(Path::new(path), ProductKind::GRIB).ok()?;
     let mut iter = handle.ref_message_iter();
     let msg = match iter.next() {
@@ -72,13 +76,12 @@ fn extract_points(
     py: Python<'_>,
     paths: Vec<String>,
     cell_indices: Vec<usize>,
-) -> PyResult<Vec<Option<(i64, Vec<f64>)>>> {
+) -> Vec<PointSeries> {
     py.allow_threads(|| {
-        let out: Vec<Option<(i64, Vec<f64>)>> = paths
+        paths
             .par_iter()
             .map(|p| extract_one(p, &cell_indices))
-            .collect();
-        Ok(out)
+            .collect()
     })
 }
 

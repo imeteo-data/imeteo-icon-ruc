@@ -102,5 +102,4 @@ Thumbs.db
 
 # Rust extension build artifacts
 extract_rs/target/
-extract_rs/Cargo.lock
 *.pyd
