@@ -1,0 +1,7 @@
+# Pins the Rust toolchain for extract_rs (G2-07). rustup honors this file
+# when cargo runs inside extract_rs/; CI additionally exports RUSTUP_TOOLCHAIN
+# so the maturin build invoked from the repo root uses the same pin.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

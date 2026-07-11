@@ -37,13 +37,33 @@ jobs:
       - name: Install Python deps
         run: uv sync --group dev
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain (pinned by extract_rs/rust-toolchain.toml)
+        # Plain rustup reads rust-toolchain.toml from the working directory
+        # (dtolnay/rust-toolchain does not). RUSTUP_TOOLCHAIN is exported so
+        # the maturin build below — invoked from the repo root, outside the
+        # toml's reach — resolves to the same pinned toolchain.
+        working-directory: extract_rs
+        run: |
+          rustup toolchain install
+          echo "RUSTUP_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')" >> "$GITHUB_ENV"
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: extract_rs
+
+      - name: Format check
+        working-directory: extract_rs
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: extract_rs
+        env:
+          # pyo3's build script probes a Python interpreter; point it at the
+          # uv-synced venv so it can't pick up a runner Python that pyo3
+          # doesn't support yet.
+          PYO3_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: cargo clippy --release --all-targets -- -D warnings
 
       - name: Build Rust extraction extension
         run: uv run maturin develop --release --manifest-path extract_rs/Cargo.toml
