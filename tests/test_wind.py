@@ -1,5 +1,6 @@
 """Tests for the derived WIND_10M variable (run._magnitude_series + the
 DERIVED_VARIABLES config path through stats.build_variable_output)."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -22,8 +23,8 @@ def test_magnitude_series_is_per_member_hypot():
 
 
 def test_magnitude_series_keeps_only_shared_timestamps():
-    u = {"01": _series([3.0, 3.0, 3.0])}      # t0, t1, t2
-    v = {"01": _series([4.0, 4.0])}           # t0, t1 only
+    u = {"01": _series([3.0, 3.0, 3.0])}  # t0, t1, t2
+    v = {"01": _series([4.0, 4.0])}  # t0, t1 only
     out = run._magnitude_series(u, v)
     assert len(out["01"]) == 2  # t2 has no V component → dropped
 

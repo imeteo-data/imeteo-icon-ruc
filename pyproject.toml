@@ -18,3 +18,19 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest>=7.0", "maturin[patchelf]>=1.4"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Org lint selection cribbed from imeteo-data's [tool.ruff] (the SSOT for the
+# per-rule rationale comments). T20 (print ban) is deliberately NOT enabled:
+# this repo has no logger — print IS the pipeline's log channel, surfaced as
+# GitHub Actions job output (same call as imeteo-data-basemap).
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PT"]
+# E501: line length handled by the formatter.
+# RUF002/RUF003: ambiguous `×` (MULTIPLICATION SIGN) in docstrings/comments is
+#   intentional scientific notation (ensemble × step, ~5-10× faster) — same
+#   ignore and rationale as imeteo-data.
+ignore = ["E501", "RUF002", "RUF003"]

@@ -1,4 +1,5 @@
 """ICON grid loader + KDTree index, cached on disk."""
+
 from __future__ import annotations
 
 import bz2
@@ -20,8 +21,9 @@ def _download_grid() -> Path:
     if config.GRID_FILE.exists():
         return config.GRID_FILE
     print(f"Downloading ICON grid from {config.GRID_URL}...")
-    resp = requests.get(config.GRID_URL, stream=True, timeout=300,
-                        headers={"User-Agent": config.HTTP_USER_AGENT})
+    resp = requests.get(
+        config.GRID_URL, stream=True, timeout=300, headers={"User-Agent": config.HTTP_USER_AGENT}
+    )
     resp.raise_for_status()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".nc.bz2") as tmp:
         shutil.copyfileobj(resp.raw, tmp)

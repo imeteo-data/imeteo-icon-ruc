@@ -1,4 +1,5 @@
 """Async cache-aware downloader for DWD GRIB files."""
+
 from __future__ import annotations
 
 import asyncio
@@ -15,8 +16,9 @@ def expected_path(variable: str, run_id: str, ensemble: str, step: str) -> Path:
     return config.RAW_DIR / discover.local_filename(variable, run_id, ensemble, step)
 
 
-async def _fetch_one(session: aiohttp.ClientSession, sem: asyncio.Semaphore,
-                     url: str, dest: Path) -> Path | None:
+async def _fetch_one(
+    session: aiohttp.ClientSession, sem: asyncio.Semaphore, url: str, dest: Path
+) -> Path | None:
     if dest.exists() and dest.stat().st_size > 0:
         return dest
     async with sem:
@@ -38,8 +40,9 @@ async def _fetch_one(session: aiohttp.ClientSession, sem: asyncio.Semaphore,
             return None
 
 
-async def fetch_variable(variable: str, run_id: str, ensembles: list[str],
-                         steps: list[str]) -> list[Path]:
+async def fetch_variable(
+    variable: str, run_id: str, ensembles: list[str], steps: list[str]
+) -> list[Path]:
     """Download all (ensemble × step) files for one variable. Skips cached files."""
     config.ensure_dirs()
     targets: list[tuple[str, Path]] = []
@@ -57,9 +60,11 @@ async def fetch_variable(variable: str, run_id: str, ensembles: list[str],
 
     sem = asyncio.Semaphore(config.MAX_CONCURRENT_DOWNLOADS)
     ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-    connector = aiohttp.TCPConnector(limit=config.MAX_CONCURRENT_DOWNLOADS + 10,
-                                     limit_per_host=config.MAX_CONCURRENT_DOWNLOADS,
-                                     ssl=ssl_ctx)
+    connector = aiohttp.TCPConnector(
+        limit=config.MAX_CONCURRENT_DOWNLOADS + 10,
+        limit_per_host=config.MAX_CONCURRENT_DOWNLOADS,
+        ssl=ssl_ctx,
+    )
     timeout = aiohttp.ClientTimeout(total=config.DOWNLOAD_TIMEOUT_SECONDS)
     headers = {"User-Agent": config.HTTP_USER_AGENT}
     async with aiohttp.ClientSession(connector=connector, timeout=timeout, headers=headers) as s:

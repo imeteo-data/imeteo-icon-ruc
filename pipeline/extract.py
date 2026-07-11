@@ -5,6 +5,7 @@ Falls back to a pure-Python xarray/cfgrib path if the extension is absent.
 Either way each GRIB is decoded once and sampled at every requested cell,
 so extraction cost does not grow with the number of dashboard locations.
 """
+
 from __future__ import annotations
 
 import math
@@ -17,6 +18,7 @@ from . import config, discover
 
 try:
     import extract_rs  # type: ignore
+
     # The extract_rs/ source directory can be discovered as an empty
     # namespace package (PEP 420) when the compiled wheel isn't installed
     # — e.g. on CI runners. A plain `import` succeeds but the Rust symbols
@@ -25,23 +27,26 @@ try:
 except ImportError:
     _RUST_AVAILABLE = False
 
-print(f"  extract backend: {'Rust (extract_rs)' if _RUST_AVAILABLE else 'Python (xarray fallback)'}")
+print(
+    f"  extract backend: {'Rust (extract_rs)' if _RUST_AVAILABLE else 'Python (xarray fallback)'}"
+)
 
 # One extracted time series per ensemble member: {member_id: [(time, value)]}
 Series = dict[str, list[tuple[np.datetime64, float]]]
 
 
-def _read_points_python(path: Path, grib_var: str, cell_indices: list[int]
-                        ) -> tuple[np.datetime64, list[float]] | None:
+def _read_points_python(
+    path: Path, grib_var: str, cell_indices: list[int]
+) -> tuple[np.datetime64, list[float]] | None:
     """Fallback: pure-Python per-file extract using xarray + cfgrib.
 
     Mirrors the Rust extension's semantics: None for an unreadable file,
     NaN for individual bad cells.
     """
     import xarray as xr  # local import so Rust users don't pay for it
+
     try:
-        ds = xr.open_dataset(path, engine="cfgrib",
-                             backend_kwargs={"indexpath": ""})
+        ds = xr.open_dataset(path, engine="cfgrib", backend_kwargs={"indexpath": ""})
     except Exception as e:
         print(f"  open failed {path.name}: {e}")
         return None
@@ -61,8 +66,7 @@ def _read_points_python(path: Path, grib_var: str, cell_indices: list[int]
         ds.close()
 
 
-def extract_variable(paths: list[Path], variable: str, cell_indices: list[int]
-                     ) -> list[Series]:
+def extract_variable(paths: list[Path], variable: str, cell_indices: list[int]) -> list[Series]:
     """Extract per-ensemble point series at each cell from local GRIB files.
 
     Returns one Series per entry in `cell_indices` (parallel lists), each
@@ -87,20 +91,20 @@ def extract_variable(paths: list[Path], variable: str, cell_indices: list[int]
 
     if _RUST_AVAILABLE:
         # One parallel Rust call per variable — rayon scales across cores.
-        results = extract_rs.extract_points(
-            [str(p) for _, p in flat], cell_indices
-        )
-        results = ((np.datetime64(int(r[0]), "s"), r[1]) if r else None
-                   for r in results)
+        results = extract_rs.extract_points([str(p) for _, p in flat], cell_indices)
+        results = ((np.datetime64(int(r[0]), "s"), r[1]) if r else None for r in results)
     else:
-        results = (_read_points_python(p, grib_var, cell_indices)
-                   for _, p in flat)
+        results = (_read_points_python(p, grib_var, cell_indices) for _, p in flat)
 
-    for (ensemble, _path), result in zip(flat, results):
+    # strict=True is safe on both zips: results is produced 1:1 from `flat`
+    # (extract_rs.extract_points returns a Vec parallel to its paths; the
+    # Python generator maps over `flat` directly), and both backends return
+    # exactly one value per requested cell index.
+    for (ensemble, _path), result in zip(flat, results, strict=True):
         if result is None:
             continue
         t, values = result
-        for series, value in zip(per_cell, values):
+        for series, value in zip(per_cell, values, strict=True):
             if not math.isnan(value):
                 series[ensemble].append((t, value))
 

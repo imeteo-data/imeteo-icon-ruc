@@ -1,11 +1,12 @@
 """Pipeline orchestrator: discover -> download -> extract -> stats -> write JSON."""
+
 from __future__ import annotations
 
 import asyncio
 import json
 import math
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import config, discover, download, extract, grid, stats
@@ -43,8 +44,7 @@ async def _download_run(variable: str, run_id: str, offline: bool) -> list[Path]
     return await download.fetch_variable(variable, run_id, ensembles, steps)
 
 
-def _magnitude_series(u_series: extract.Series, v_series: extract.Series
-                      ) -> extract.Series:
+def _magnitude_series(u_series: extract.Series, v_series: extract.Series) -> extract.Series:
     """Per-member vector magnitude of two aligned component series.
 
     speed[member][t] = hypot(u, v), computed BEFORE percentiles so the
@@ -69,7 +69,7 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
     Writes one JSON per location: data/forecasts/{run_id}_{location_id}.json
     """
     print(f"\n── run {run_id} ──")
-    tree, lats, _ = grid.load_or_build_index()
+    tree, _lats, _ = grid.load_or_build_index()
 
     # Download (or load from cache) each variable once — same files for all locations.
     var_paths: dict[str, list[Path]] = {}
@@ -80,7 +80,7 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
         print(f"  ✗ no data for {run_id}")
         return []
 
-    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    generated_at = datetime.now(UTC).isoformat(timespec="seconds")
     config.ensure_dirs()
     outputs = []
 
@@ -89,8 +89,7 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
     cells: dict[str, tuple[int, float]] = {}
     for loc_id, loc_cfg in config.LOCATIONS.items():
         cells[loc_id] = grid.nearest_index(tree, loc_cfg["lat"], loc_cfg["lon"])
-        print(f"  [{loc_id}] nearest grid cell: idx={cells[loc_id][0]} "
-              f"({cells[loc_id][1]:.2f} km)")
+        print(f"  [{loc_id}] nearest grid cell: idx={cells[loc_id][0]} ({cells[loc_id][1]:.2f} km)")
     cell_indices = [cell for cell, _ in cells.values()]
 
     # {variable: [series per location, parallel to config.LOCATIONS order]}
@@ -99,8 +98,7 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
         if not paths:
             print(f"  {var_name}: skipped (no files)")
             continue
-        print(f"  {var_name}: extracting {len(cell_indices)} cells "
-              f"from {len(paths)} files...")
+        print(f"  {var_name}: extracting {len(cell_indices)} cells from {len(paths)} files...")
         var_series[var_name] = extract.extract_variable(paths, var_name, cell_indices)
 
     for loc_pos, (loc_id, loc_cfg) in enumerate(config.LOCATIONS.items()):
@@ -120,22 +118,26 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
                 continue
             series = series_per_cell[loc_pos]
             loc_output["variables"][var_name] = stats.build_variable_output(series, var_name)
-            print(f"  [{loc_id}] {var_name}: {len(series)} members, "
-                  f"{len(loc_output['variables'][var_name]['times'])} timestamps")
+            print(
+                f"  [{loc_id}] {var_name}: {len(series)} members, "
+                f"{len(loc_output['variables'][var_name]['times'])} timestamps"
+            )
 
         # Derived WIND_10M = sqrt(U² + V²) per ensemble member, then percentiles.
         for derived_name, derived_cfg in config.DERIVED_VARIABLES.items():
             u_name, v_name = derived_cfg["sources"]
             if u_name not in var_series or v_name not in var_series:
                 continue
-            derived = _magnitude_series(
-                var_series[u_name][loc_pos], var_series[v_name][loc_pos])
+            derived = _magnitude_series(var_series[u_name][loc_pos], var_series[v_name][loc_pos])
             if not derived:
                 continue
             loc_output["variables"][derived_name] = stats.build_variable_output(
-                derived, derived_name)
-            print(f"  [{loc_id}] {derived_name}: {len(derived)} members, "
-                  f"{len(loc_output['variables'][derived_name]['times'])} timestamps")
+                derived, derived_name
+            )
+            print(
+                f"  [{loc_id}] {derived_name}: {len(derived)} members, "
+                f"{len(loc_output['variables'][derived_name]['times'])} timestamps"
+            )
 
         if not loc_output["variables"]:
             print(f"  [{loc_id}] ✗ no data")
@@ -192,11 +194,15 @@ def _write_index() -> None:
     run_ids = sorted(by_run.keys(), reverse=True)
     idx_path = config.FORECAST_DIR / "index.json"
     with open(idx_path, "w") as f:
-        json.dump({
-            "locations": config.LOCATIONS,
-            "runs": run_ids,
-            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }, f, separators=(",", ":"))
+        json.dump(
+            {
+                "locations": config.LOCATIONS,
+                "runs": run_ids,
+                "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            },
+            f,
+            separators=(",", ":"),
+        )
 
 
 def _local_run_horizon(run_id: str) -> datetime | None:
@@ -208,7 +214,7 @@ def _local_run_horizon(run_id: str) -> datetime | None:
     gate_loc = next(iter(config.LOCATIONS))
     candidates = [
         config.FORECAST_DIR / f"{run_id}_{gate_loc}.json",
-        config.FORECAST_DIR / f"{run_id}.json",   # legacy
+        config.FORECAST_DIR / f"{run_id}.json",  # legacy
     ]
     for path in candidates:
         if not path.exists():
@@ -258,7 +264,7 @@ async def _wait_for_run_upload(
     new files. Gives up after `max_wait` seconds and lets the pipeline run with
     whatever is available, printing a warning.
     """
-    base = datetime.strptime(run_id, "%Y-%m-%dT%H%M").replace(tzinfo=timezone.utc)
+    base = datetime.strptime(run_id, "%Y-%m-%dT%H%M").replace(tzinfo=UTC)
     full_horizon = base + timedelta(minutes=config.EXPECTED_FORECAST_MINUTES)
 
     prev: datetime | None = None
@@ -278,19 +284,25 @@ async def _wait_for_run_upload(
         if prev is not None:
             if horizon <= prev:
                 stable += 1
-                print(f"  ⏳ {run_id}: horizon stable at {horizon.isoformat()} "
-                      f"({stable}/{stable_polls})")
+                print(
+                    f"  ⏳ {run_id}: horizon stable at {horizon.isoformat()} "
+                    f"({stable}/{stable_polls})"
+                )
                 if stable >= stable_polls:
                     print(f"  ✓ {run_id}: upload stable — proceeding")
                     return
             else:
                 stable = 0
-                print(f"  ⏳ {run_id}: horizon grew → {horizon.isoformat()}, "
-                      f"full expected {full_horizon.isoformat()}")
+                print(
+                    f"  ⏳ {run_id}: horizon grew → {horizon.isoformat()}, "
+                    f"full expected {full_horizon.isoformat()}"
+                )
         else:
-            print(f"  ⏳ {run_id}: upload in progress "
-                  f"(horizon {horizon.isoformat()}, "
-                  f"expecting {full_horizon.isoformat()})")
+            print(
+                f"  ⏳ {run_id}: upload in progress "
+                f"(horizon {horizon.isoformat()}, "
+                f"expecting {full_horizon.isoformat()})"
+            )
 
         prev = horizon
         await asyncio.sleep(poll_interval)
@@ -299,8 +311,7 @@ async def _wait_for_run_upload(
     print(f"  ⚠ {run_id}: gave up waiting after {max_wait}s, processing what's available")
 
 
-def resolve_runs(run_id: str | None = None, runs: int = 1,
-                 offline: bool = False) -> list[str]:
+def resolve_runs(run_id: str | None = None, runs: int = 1, offline: bool = False) -> list[str]:
     """Pick the runs to process based on CLI args."""
     if run_id:
         return [run_id]
@@ -313,9 +324,12 @@ def resolve_runs(run_id: str | None = None, runs: int = 1,
         return discover.local_run_ids()[:runs]
 
 
-async def process_runs(run_ids: list[str], offline: bool = False,
-                       skip_complete: bool = False,
-                       wait_for_upload: bool = True) -> list[Path]:
+async def process_runs(
+    run_ids: list[str],
+    offline: bool = False,
+    skip_complete: bool = False,
+    wait_for_upload: bool = True,
+) -> list[Path]:
     """Process each run; with skip_complete, skip runs already fully cached.
 
     skip_complete makes backfill cheap and self-healing: missing hours (dropped

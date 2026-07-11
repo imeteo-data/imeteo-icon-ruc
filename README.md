@@ -1,6 +1,6 @@
 # ICON-D2-RUC-EPS · Bratislava
 
-Ensemble forecast dashboard for Bratislava (and Pohoda / Letisko Trenčín) built on DWD's
+Ensemble forecast dashboard for Bratislava (and Pohoda) built on DWD's
 ICON-D2-RUC-EPS rapid-update-cycle ensemble (20 members). The pipeline downloads
 GRIB2 files, extracts the single grid cell nearest each location, computes ensemble
 percentiles and exceedance probabilities across the members, and writes one
@@ -33,14 +33,31 @@ Variables processed: `TOT_PREC` (5-min precipitation rate, mm/h),
 
 ## Automation
 
-`.github/workflows/forecast.yml` fires **every 15 minutes** (plus manual
-`workflow_dispatch`). Each fire backfills the 12 most recent runs
+`.github/workflows/forecast.yml` is triggered two ways:
+
+- **Primary — external dispatch loop.** A LaunchAgent on the owner's
+  always-on Mac Mini runs `gh workflow run forecast.yml` at **:15 and :45**
+  every hour (setup captured in
+  [PR #1](https://github.com/imeteo-data/imeteo-icon-ruc/pull/1)). This is
+  the dependable cadence.
+- **Fallback — GitHub `*/15` cron.** GitHub heavily throttles scheduled
+  runs on this repo (observed ~4 fires in 13 h against the 52 requested),
+  so the cron alone cannot hold the cadence; it only papers over Mini
+  outages with hours-scale gaps.
+
+Each fire backfills the 12 most recent runs
 (`main.py --runs 12 --backfill` — already-complete runs are skipped, so a
 no-op fire is cheap), trims to the newest 12 runs, and commits changed JSONs
 back to `main`. When forecasts changed, a second job deploys the repo root to
 GitHub Pages via `actions/deploy-pages`. `choose-runner.yml` runs the job on
 the self-hosted `mac-mini-m2` runner when it is online, `ubuntu-latest`
 otherwise.
+
+`.github/workflows/freshness.yml` is the alarm for the whole trigger stack:
+every 2 hours it checks `generated_at` in the committed
+`data/forecasts/index.json` and fails the run (red X + `::error`) when it is
+older than 2 hours — i.e. both the Mini loop and the cron fallback have
+stopped producing.
 
 ## Quickstart
 

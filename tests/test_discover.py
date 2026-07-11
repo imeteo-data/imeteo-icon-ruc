@@ -5,6 +5,7 @@ to its deterministic sibling icon-d2-ruc automatically when the ensemble
 source is down — the behaviour that kept the dashboard publishing through
 the 2026-07-02 → 2026-07-04 DWD outage, now without a manual config flip.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -38,11 +39,13 @@ def _reset_active_source():
 
 def _fake_get(responses_by_prefix):
     """requests.get stub routing by URL prefix. Unmatched URLs → 404."""
+
     def get(url, **kwargs):
         for prefix, resp in responses_by_prefix.items():
             if url.startswith(prefix):
                 return resp() if callable(resp) else resp
         return _FakeResponse(b"", 404)
+
     return get
 
 
@@ -55,20 +58,32 @@ def test_primary_source_wins_when_up(monkeypatch):
 
 
 def test_falls_back_when_primary_404s(monkeypatch):
-    monkeypatch.setattr(requests, "get", _fake_get({
-        EPS_BASE: _FakeResponse(b"", 404),
-        DET_BASE: _FakeResponse(),
-    }))
+    monkeypatch.setattr(
+        requests,
+        "get",
+        _fake_get(
+            {
+                EPS_BASE: _FakeResponse(b"", 404),
+                DET_BASE: _FakeResponse(),
+            }
+        ),
+    )
     src = discover.active_source()
     assert src["name"] == "icon-d2-ruc"
     assert src["has_ensemble"] is False
 
 
 def test_falls_back_when_primary_index_is_empty(monkeypatch):
-    monkeypatch.setattr(requests, "get", _fake_get({
-        EPS_BASE: _FakeResponse(EMPTY_HTML),
-        DET_BASE: _FakeResponse(),
-    }))
+    monkeypatch.setattr(
+        requests,
+        "get",
+        _fake_get(
+            {
+                EPS_BASE: _FakeResponse(EMPTY_HTML),
+                DET_BASE: _FakeResponse(),
+            }
+        ),
+    )
     assert discover.active_source()["name"] == "icon-d2-ruc"
 
 
@@ -97,8 +112,7 @@ def test_source_is_memoized_until_refresh(monkeypatch):
 def test_build_url_ensemble_layout(monkeypatch):
     monkeypatch.setattr(requests, "get", _fake_get({EPS_BASE: _FakeResponse()}))
     url = discover.build_url("TOT_PREC", "2026-07-04T1400", "01", "PT000H05M")
-    assert url == (f"{EPS_BASE}/TOT_PREC/r/2026-07-04T14%3A00"
-                   "/e/01/s/PT000H05M.grib2")
+    assert url == (f"{EPS_BASE}/TOT_PREC/r/2026-07-04T14%3A00/e/01/s/PT000H05M.grib2")
 
 
 def test_build_url_deterministic_layout(monkeypatch):
@@ -113,8 +127,14 @@ def test_deterministic_source_reports_synthetic_member(monkeypatch):
 
 
 def test_list_remote_runs_uses_active_source(monkeypatch):
-    monkeypatch.setattr(requests, "get", _fake_get({
-        EPS_BASE: _FakeResponse(b"", 404),
-        DET_BASE: _FakeResponse(),
-    }))
+    monkeypatch.setattr(
+        requests,
+        "get",
+        _fake_get(
+            {
+                EPS_BASE: _FakeResponse(b"", 404),
+                DET_BASE: _FakeResponse(),
+            }
+        ),
+    )
     assert discover.list_remote_runs(limit=5) == ["2026-07-04T1400"]
