@@ -127,10 +127,15 @@ jobs:
     if: needs.forecast.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # Publishing is last-one-wins: the job always deploys the current tip of
-    # main, so a newer deploy fully supersedes an older one. cancel-in-progress
-    # therefore both saves Pages quota and self-heals a deploy stuck in the
-    # environment `waiting` gate — the next one clears it instead of inheriting
-    # the block.
+    # main, so a newer deploy fully supersedes an older one and cancelling a
+    # superseded deploy loses nothing.
+    # NOTE: this group's guaranteed benefit is isolation — a wedged deploy can
+    # no longer stall the forecast job, since that lives in its own group.
+    # Whether cancel-in-progress also evicts a job stuck in the environment
+    # `waiting` gate is UNVERIFIED (not exercised by the 2026-08-07 recovery).
+    # If it doesn't, a future wedge would confine the cancel-cascade to deploys:
+    # data keeps committing, but the site could freeze until someone runs
+    # `gh run cancel <id>` on the waiting run.
     concurrency:
       group: forecast-pages
       cancel-in-progress: true
