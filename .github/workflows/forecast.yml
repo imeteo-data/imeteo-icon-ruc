@@ -23,9 +23,14 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: forecast-deploy
-  cancel-in-progress: false
+# Concurrency is scoped per job, NOT workflow-wide. A workflow-level group
+# couples data refresh to publishing: on 2026-08-06 a Pages deploy wedged in
+# the `waiting` state on the github-pages environment gate (an un-approvable
+# pending deployment left behind by a GitHub Actions incident) and held the
+# group indefinitely. Since only one run may sit pending per group, every
+# subsequent fire queued and was cancelled by the next — 34 straight
+# cancellations, no forecast job ran for 14h, and the site froze. Per-job
+# groups keep a stuck deploy from ever blocking the data pipeline again.
 
 jobs:
   choose-runner:
@@ -34,6 +39,12 @@ jobs:
   forecast:
     needs: choose-runner
     runs-on: ${{ needs.choose-runner.outputs.runner }}
+    # Serialize data refresh against itself: concurrent runs would race on the
+    # same commit/push to main. Never cancel-in-progress — a mid-flight
+    # forecast holds downloaded GRIBs and is close to committing.
+    concurrency:
+      group: forecast-data
+      cancel-in-progress: false
     # Higher than the old 15: a backfill after a long scheduler gap may process
     # several runs. If it still overruns, the next fire continues where it left
     # off (the work is self-healing), so this is just a safety net.
@@ -115,6 +126,14 @@ jobs:
     # always deploys, so site/code changes can be pushed live on demand.
     if: needs.forecast.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # Publishing is last-one-wins: the job always deploys the current tip of
+    # main, so a newer deploy fully supersedes an older one. cancel-in-progress
+    # therefore both saves Pages quota and self-heals a deploy stuck in the
+    # environment `waiting` gate — the next one clears it instead of inheriting
+    # the block.
+    concurrency:
+      group: forecast-pages
+      cancel-in-progress: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
