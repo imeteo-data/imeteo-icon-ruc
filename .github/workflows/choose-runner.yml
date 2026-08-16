@@ -7,18 +7,13 @@ on:
         description: "Runner label: self-hosted when mac-mini-m2 is online, ubuntu-latest otherwise"
         value: ${{ jobs.pick.outputs.runner }}
 
+permissions:
+  contents: read
+
 jobs:
   pick:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # `administration: read` is REQUIRED to list this repo's self-hosted
-    # runners. It is not part of the default GITHUB_TOKEN even in write-all
-    # mode, so without it the runners API returns 403 and every fire silently
-    # falls back to ubuntu-latest — which is exactly why the mac-mini offload
-    # never took effect (see imeteo-icon-ruc#14).
-    permissions:
-      contents: read
-      administration: read
     outputs:
       runner: ${{ steps.check.outputs.runner }}
     steps:
@@ -26,17 +21,26 @@ jobs:
         id: check
         env:
           OVERRIDE: ${{ vars.RUNNER_LABEL }}
-          GH_TOKEN: ${{ github.token }}
+          # GITHUB_TOKEN cannot list self-hosted runners — there is no
+          # `administration` permission scope for it — so auto-detection needs a
+          # PAT with repo Administration:read stored as secret RUNNER_READ_TOKEN.
+          # When it is absent we fall back to ubuntu-latest. Set vars.RUNNER_LABEL
+          # to pin a runner without any token: `self-hosted` for the mac-mini,
+          # `ubuntu-latest` to force hosted (kill-switch if the Mac is down).
+          RUNNER_READ_TOKEN: ${{ secrets.RUNNER_READ_TOKEN }}
         run: |
           if [ -n "${OVERRIDE:-}" ]; then
             echo "Runner: $OVERRIDE (vars.RUNNER_LABEL override)"
             echo "runner=$OVERRIDE" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # mac-mini-m2 is registered at the REPO level for this repo. Query
-          # fails loud: an API/permission error must never masquerade as
-          # "offline" and hide a broken runner (org CI convention).
-          if ! status=$(gh api "repos/${{ github.repository }}/actions/runners" \
+          if [ -z "${RUNNER_READ_TOKEN:-}" ]; then
+            echo "::warning::RUNNER_READ_TOKEN not set; cannot probe the self-hosted runner. Falling back to ubuntu-latest (set vars.RUNNER_LABEL=self-hosted to pin the mac-mini)."
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Fails loud: an API/permission error must never masquerade as "offline".
+          if ! status=$(GH_TOKEN="$RUNNER_READ_TOKEN" gh api "repos/${{ github.repository }}/actions/runners" \
                           --jq '.runners[] | select(.name=="mac-mini-m2") | .status'); then
             echo "::warning::Could not query self-hosted runners (API/permission error); falling back to ubuntu-latest"
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
