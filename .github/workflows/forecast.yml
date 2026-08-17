@@ -65,28 +65,29 @@ jobs:
       - name: Install Python deps
         run: uv sync --group dev
 
-      # The Rust extension is an OPTIONAL ~5-10x speedup: pipeline/extract.py
-      # falls back to xarray/cfgrib automatically when it isn't importable. All
-      # three Rust steps below are therefore non-fatal — on the self-hosted
-      # mac-mini runner (Homebrew cargo, no rustup, and crates.io blocked on the
-      # LAN) the fast-path build can't complete, and the forecast MUST still run.
-      # GitHub-hosted Linux runners ship rustup, so they keep building the
-      # extension as before. Rust regressions are still caught by ci.yml, not here.
-      - name: Install Rust toolchain (pinned by extract_rs/rust-toolchain.toml)
-        # Plain rustup reads rust-toolchain.toml from the working directory
-        # (dtolnay/rust-toolchain does not). RUSTUP_TOOLCHAIN is exported so
-        # the maturin build below — invoked from the repo root, outside the
-        # toml's reach — resolves to the same pinned toolchain. Guarded by
-        # `command -v rustup` so a runner without rustup skips it instead of
-        # failing exit 127 (self-hosted mac-mini has Homebrew cargo, no rustup).
-        working-directory: extract_rs
+      # The Rust extension is a ~5-10x speedup with an automatic xarray/cfgrib
+      # fallback in pipeline/extract.py. The step below makes the fast-path build
+      # work on BOTH runners; the build stays continue-on-error so a Rust hiccup
+      # degrades to xarray rather than stopping the forecast. ci.yml is the gate
+      # that fails loudly on Rust regressions — not this production pipeline.
+      - name: Put Rust toolchain on PATH (pinned by extract_rs/rust-toolchain.toml)
         continue-on-error: true
+        shell: bash
         run: |
-          if command -v rustup >/dev/null 2>&1; then
-            rustup toolchain install
-            echo "RUSTUP_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # Self-hosted mac-mini: the real cargo/rustc (Homebrew rust 1.97.x,
+            # ~ the pinned 1.97.0) live in /opt/homebrew/bin, which is NOT on the
+            # runner PATH — and ~/.cargo/bin holds only dangling rustup proxies.
+            # Expose Homebrew so the maturin build below finds cargo; crates.io
+            # and pkg-config eccodes are both reachable from this host.
+            echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
           else
-            echo "::notice::rustup not found; skipping toolchain install. Rust extension build may be skipped — pipeline falls back to xarray/cfgrib."
+            # GitHub-hosted Linux: rustup is preinstalled. Plain rustup reads
+            # rust-toolchain.toml from extract_rs/ (dtolnay/rust-toolchain does
+            # not); export RUSTUP_TOOLCHAIN so the maturin build (invoked from the
+            # repo root, outside the toml's reach) uses the same pin.
+            ( cd extract_rs && rustup toolchain install )
+            echo "RUSTUP_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')" >> "$GITHUB_ENV"
           fi
 
       - name: Cache Rust build artifacts
