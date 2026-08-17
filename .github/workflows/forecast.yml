@@ -65,22 +65,38 @@ jobs:
       - name: Install Python deps
         run: uv sync --group dev
 
+      # The Rust extension is an OPTIONAL ~5-10x speedup: pipeline/extract.py
+      # falls back to xarray/cfgrib automatically when it isn't importable. All
+      # three Rust steps below are therefore non-fatal — on the self-hosted
+      # mac-mini runner (Homebrew cargo, no rustup, and crates.io blocked on the
+      # LAN) the fast-path build can't complete, and the forecast MUST still run.
+      # GitHub-hosted Linux runners ship rustup, so they keep building the
+      # extension as before. Rust regressions are still caught by ci.yml, not here.
       - name: Install Rust toolchain (pinned by extract_rs/rust-toolchain.toml)
         # Plain rustup reads rust-toolchain.toml from the working directory
         # (dtolnay/rust-toolchain does not). RUSTUP_TOOLCHAIN is exported so
         # the maturin build below — invoked from the repo root, outside the
-        # toml's reach — resolves to the same pinned toolchain.
+        # toml's reach — resolves to the same pinned toolchain. Guarded by
+        # `command -v rustup` so a runner without rustup skips it instead of
+        # failing exit 127 (self-hosted mac-mini has Homebrew cargo, no rustup).
         working-directory: extract_rs
+        continue-on-error: true
         run: |
-          rustup toolchain install
-          echo "RUSTUP_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')" >> "$GITHUB_ENV"
+          if command -v rustup >/dev/null 2>&1; then
+            rustup toolchain install
+            echo "RUSTUP_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')" >> "$GITHUB_ENV"
+          else
+            echo "::notice::rustup not found; skipping toolchain install. Rust extension build may be skipped — pipeline falls back to xarray/cfgrib."
+          fi
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
+        continue-on-error: true
         with:
           workspaces: extract_rs
 
       - name: Build Rust extraction extension
+        continue-on-error: true
         run: uv run maturin develop --release --manifest-path extract_rs/Cargo.toml
 
       - name: Fetch & backfill recent runs
