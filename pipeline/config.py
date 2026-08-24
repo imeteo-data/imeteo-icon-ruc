@@ -17,6 +17,11 @@ LOCATIONS = {
         "lat": 48.8654,
         "lon": 17.9997,
     },
+    "uprising": {
+        "name": "Uprising — Zlaté piesky",
+        "lat": 48.186,
+        "lon": 17.187,
+    },
 }
 
 VARIABLES = {
@@ -42,6 +47,41 @@ VARIABLES = {
         "unit": "°C",
         "offset": -273.15,         # GRIB values are Kelvin; shift to Celsius
         "thresholds": [0.0, 10.0, 20.0, 30.0],
+    },
+    # 10 m wind components — inputs to the derived WIND_10M (sustained wind
+    # speed) only. `internal` variables are downloaded and extracted like any
+    # other, but are never written to the forecast JSON: the vector components
+    # alone carry no dashboard meaning.
+    "U_10M": {
+        "grib_var": "10u",        # eccodes shortName; 10 m U wind component
+        "is_accumulated": False,
+        "step_minutes": 60,
+        "unit": "m/s",
+        "thresholds": [],
+        "internal": True,
+    },
+    "V_10M": {
+        "grib_var": "10v",        # eccodes shortName; 10 m V wind component
+        "is_accumulated": False,
+        "step_minutes": 60,
+        "unit": "m/s",
+        "thresholds": [],
+        "internal": True,
+    },
+}
+
+# Derived variables computed from source VARIABLES per ensemble member BEFORE
+# percentiles (so the ensemble's directional spread survives) — see
+# run._magnitude_series. WIND_10M = |(U_10M, V_10M)| is the sustained 10 m
+# wind speed, the counterpart to the VMAX_10M hourly-max gust (the model gust
+# naturally sits above sustained wind, as observed gusts sit above observed
+# sustained wind).
+DERIVED_VARIABLES = {
+    "WIND_10M": {
+        "sources": ("U_10M", "V_10M"),
+        "is_accumulated": False,
+        "unit": "m/s",
+        "thresholds": [3.0, 5.0, 8.0, 12.0],
     },
 }
 

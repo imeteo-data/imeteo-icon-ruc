@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -40,6 +41,24 @@ async def _download_run(variable: str, run_id: str, offline: bool) -> list[Path]
     if not ensembles or not steps:
         return discover.files_for_run(run_id, variable)
     return await download.fetch_variable(variable, run_id, ensembles, steps)
+
+
+def _magnitude_series(u_series: extract.Series, v_series: extract.Series
+                      ) -> extract.Series:
+    """Per-member vector magnitude of two aligned component series.
+
+    speed[member][t] = hypot(u, v), computed BEFORE percentiles so the
+    ensemble's directional spread is preserved (percentiles of the magnitude
+    ≠ magnitude of the percentiles). Only timestamps present in BOTH
+    components for a member are kept.
+    """
+    out: extract.Series = {}
+    for member, u_points in u_series.items():
+        v_lookup = {t: v for t, v in v_series.get(member, [])}
+        points = [(t, math.hypot(u, v_lookup[t])) for t, u in u_points if t in v_lookup]
+        if points:
+            out[member] = sorted(points)
+    return out
 
 
 async def process_run(run_id: str, offline: bool = False) -> list[Path]:
@@ -95,10 +114,28 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
             "variables": {},
         }
         for var_name, series_per_cell in var_series.items():
+            # Internal inputs (U_10M/V_10M) feed the derived WIND_10M below and
+            # are never written to the forecast JSON on their own.
+            if config.VARIABLES[var_name].get("internal"):
+                continue
             series = series_per_cell[loc_pos]
             loc_output["variables"][var_name] = stats.build_variable_output(series, var_name)
             print(f"  [{loc_id}] {var_name}: {len(series)} members, "
                   f"{len(loc_output['variables'][var_name]['times'])} timestamps")
+
+        # Derived WIND_10M = sqrt(U² + V²) per ensemble member, then percentiles.
+        for derived_name, derived_cfg in config.DERIVED_VARIABLES.items():
+            u_name, v_name = derived_cfg["sources"]
+            if u_name not in var_series or v_name not in var_series:
+                continue
+            derived = _magnitude_series(
+                var_series[u_name][loc_pos], var_series[v_name][loc_pos])
+            if not derived:
+                continue
+            loc_output["variables"][derived_name] = stats.build_variable_output(
+                derived, derived_name)
+            print(f"  [{loc_id}] {derived_name}: {len(derived)} members, "
+                  f"{len(loc_output['variables'][derived_name]['times'])} timestamps")
 
         if not loc_output["variables"]:
             print(f"  [{loc_id}] ✗ no data")

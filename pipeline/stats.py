@@ -43,7 +43,7 @@ def _deaccumulate(matrix: np.ndarray, step_minutes: int) -> np.ndarray:
 def build_variable_output(series: dict[str, list[tuple[np.datetime64, float]]],
                           variable: str) -> dict:
     """Produce the final per-variable JSON block."""
-    var_cfg = config.VARIABLES[variable]
+    var_cfg = config.VARIABLES.get(variable) or config.DERIVED_VARIABLES[variable]
     times, matrix, ens_ids = _align_ensembles(series)
     if times.size == 0 or matrix.size == 0:
         return {
