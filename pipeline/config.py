@@ -41,11 +41,11 @@ VARIABLES = {
         "skip_first_step": True,  # Model reports 0 at t=0; drop it.
     },
     "T_2M": {
-        "grib_var": "2t",         # eccodes shortName; cfVarName is "t2m"
+        "grib_var": "2t",  # eccodes shortName; cfVarName is "t2m"
         "is_accumulated": False,
         "step_minutes": 60,
         "unit": "°C",
-        "offset": -273.15,         # GRIB values are Kelvin; shift to Celsius
+        "offset": -273.15,  # GRIB values are Kelvin; shift to Celsius
         "thresholds": [0.0, 10.0, 20.0, 30.0],
     },
     # 10 m wind components — inputs to the derived WIND_10M (sustained wind
@@ -53,7 +53,7 @@ VARIABLES = {
     # other, but are never written to the forecast JSON: the vector components
     # alone carry no dashboard meaning.
     "U_10M": {
-        "grib_var": "10u",        # eccodes shortName; 10 m U wind component
+        "grib_var": "10u",  # eccodes shortName; 10 m U wind component
         "is_accumulated": False,
         "step_minutes": 60,
         "unit": "m/s",
@@ -61,7 +61,7 @@ VARIABLES = {
         "internal": True,
     },
     "V_10M": {
-        "grib_var": "10v",        # eccodes shortName; 10 m V wind component
+        "grib_var": "10v",  # eccodes shortName; 10 m V wind component
         "is_accumulated": False,
         "step_minutes": 60,
         "unit": "m/s",

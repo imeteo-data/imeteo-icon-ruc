@@ -1,0 +1,29 @@
+name: Data Freshness
+
+# Alarm for the forecast trigger stack (Mac Mini dispatch loop + GitHub cron
+# fallback): goes red when the newest committed pipeline output is older than
+# the threshold in .github/scripts/check_freshness.py. The check itself is
+# also throttle-tolerant — however late this cron fires, it still measures
+# the age of the data at that moment.
+
+on:
+  schedule:
+    - cron: "27 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check age of newest committed forecast
+        run: python3 .github/scripts/check_freshness.py

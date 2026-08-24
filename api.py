@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Flask API + static dashboard server."""
+
 from __future__ import annotations
 
 import json
@@ -28,8 +29,11 @@ def _list_runs() -> list[str]:
     # Deduplicate: stem may be "{run_id}_{location_id}" or legacy "{run_id}".
     # run_id is always the first 15 chars (YYYY-MM-DDTHHMM).
     ids = sorted(
-        {p.stem[:15] for p in config.FORECAST_DIR.glob("*.json")
-         if p.stem != "index" and len(p.stem) >= 15},
+        {
+            p.stem[:15]
+            for p in config.FORECAST_DIR.glob("*.json")
+            if p.stem != "index" and len(p.stem) >= 15
+        },
         reverse=True,
     )
     _RUN_LIST_CACHE = (now, ids)
@@ -94,6 +98,7 @@ def api_run(run_id: str):
 
 def main() -> None:
     import argparse
+
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=5000)

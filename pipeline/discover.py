@@ -1,11 +1,12 @@
 """Run and file discovery — remote (DWD) and local (data/raw/)."""
+
 from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Iterable
 
 import requests
 from bs4 import BeautifulSoup
@@ -49,9 +50,14 @@ def _get_index(url: str) -> BeautifulSoup:
 def _list_runs(source: dict, variable: str) -> list[str]:
     soup = _get_index(f"{source['base']}/{variable}/r/")
     pattern = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2})/")
-    runs = sorted({pattern.search(a.get("href", "")).group(1)
-                   for a in soup.find_all("a")
-                   if pattern.search(a.get("href", ""))}, reverse=True)
+    runs = sorted(
+        {
+            pattern.search(a.get("href", "")).group(1)
+            for a in soup.find_all("a")
+            if pattern.search(a.get("href", ""))
+        },
+        reverse=True,
+    )
     return [url_to_run_id(r) for r in runs]
 
 
@@ -71,14 +77,15 @@ def active_source(refresh: bool = False) -> dict:
         try:
             if _list_runs(source, "TOT_PREC"):
                 if source is not config.DWD_SOURCES[0]:
-                    print(f"  ⚠ {config.DWD_SOURCES[0]['name']} unavailable — "
-                          f"falling back to {source['name']} (single member)")
+                    print(
+                        f"  ⚠ {config.DWD_SOURCES[0]['name']} unavailable — "
+                        f"falling back to {source['name']} (single member)"
+                    )
                 _active_source = source
                 return source
         except requests.RequestException as e:
             first_error = first_error or e
-    raise first_error or requests.RequestException(
-        "no DWD source lists any runs")
+    raise first_error or requests.RequestException("no DWD source lists any runs")
 
 
 def build_url(variable: str, run_id: str, ensemble: str, step: str) -> str:
@@ -103,9 +110,14 @@ def list_remote_ensembles(variable: str, run_id: str) -> list[str]:
         # doesn't need to know the difference.
         return ["00"]
     soup = _get_index(f"{source['base']}/{variable}/r/{run_id_to_url(run_id)}/e/")
-    ens = sorted({a.get("href", "")[:-1] for a in soup.find_all("a")
-                  if a.get("href", "").endswith("/") and a.get("href", "")[:-1].isdigit()},
-                 key=int)
+    ens = sorted(
+        {
+            a.get("href", "")[:-1]
+            for a in soup.find_all("a")
+            if a.get("href", "").endswith("/") and a.get("href", "")[:-1].isdigit()
+        },
+        key=int,
+    )
     return ens
 
 
@@ -116,9 +128,13 @@ def list_remote_steps(variable: str, run_id: str, ensemble: str) -> list[str]:
     else:
         url = f"{source['base']}/{variable}/r/{run_id_to_url(run_id)}/s/"
     soup = _get_index(url)
-    steps = sorted({a.get("href", "").replace(".grib2", "")
-                    for a in soup.find_all("a")
-                    if a.get("href", "").endswith(".grib2") and "PT" in a.get("href", "")})
+    steps = sorted(
+        {
+            a.get("href", "").replace(".grib2", "")
+            for a in soup.find_all("a")
+            if a.get("href", "").endswith(".grib2") and "PT" in a.get("href", "")
+        }
+    )
     return _filter_by_step_minutes(steps, config.VARIABLES[variable]["step_minutes"])
 
 
@@ -158,7 +174,7 @@ def remote_run_horizon(variable: str, run_id: str) -> datetime | None:
     minutes = [m for m in (_step_to_minutes(s) for s in steps) if m is not None]
     if not minutes:
         return None
-    base = datetime.strptime(run_id, "%Y-%m-%dT%H%M").replace(tzinfo=timezone.utc)
+    base = datetime.strptime(run_id, "%Y-%m-%dT%H%M").replace(tzinfo=UTC)
     return base + timedelta(minutes=max(minutes))
 
 
@@ -174,8 +190,10 @@ def scan_local_runs(raw_dir: Path | None = None) -> dict[str, dict[str, list[Pat
             continue
         run_id = f"{m.group('date')}T{m.group('hm')}"
         groups[run_id][m.group("var")].append(f)
-    return {run_id: {v: sorted(paths) for v, paths in vars_.items()}
-            for run_id, vars_ in sorted(groups.items(), reverse=True)}
+    return {
+        run_id: {v: sorted(paths) for v, paths in vars_.items()}
+        for run_id, vars_ in sorted(groups.items(), reverse=True)
+    }
 
 
 def local_run_ids() -> list[str]:

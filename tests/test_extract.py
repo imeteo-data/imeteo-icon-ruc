@@ -8,6 +8,7 @@ xarray fallback otherwise) against exact expected values.
 The tests below them use real cached GRIBs from data/raw/ and skip when none
 are available.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,8 +16,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pipeline import config, discover, extract
-
+from pipeline import discover, extract
 
 # ── synthetic GRIB fixtures (run everywhere) ───────────────
 N_CELLS = 16 * 31  # GRIB2 sample grid
@@ -24,6 +24,7 @@ N_CELLS = 16 * 31  # GRIB2 sample grid
 
 def _write_grib(path: Path, values: list[float], date: int, time: int) -> None:
     import eccodes
+
     h = eccodes.codes_grib_new_from_samples("GRIB2")
     try:
         eccodes.codes_set(h, "dataDate", date)
@@ -43,8 +44,10 @@ def synthetic_run(tmp_path):
     """Two members × two steps of a fake TOT_PREC run with known values."""
     run_id = "2026-07-04T1200"
     for ens in ("01", "02"):
-        for step, (date, time) in (("PT000H05M", (20260704, 1205)),
-                                   ("PT000H10M", (20260704, 1210))):
+        for step, (date, time) in (
+            ("PT000H05M", (20260704, 1205)),
+            ("PT000H10M", (20260704, 1210)),
+        ):
             values = [float(f"{ens}{step[-3:-1]}") + i for i in range(N_CELLS)]
             name = discover.local_filename("TOT_PREC", run_id, ens, step)
             _write_grib(tmp_path / name, values, date, time)
@@ -61,18 +64,19 @@ def test_multi_cell_extraction_values_and_times(synthetic_run):
         assert sorted(series) == ["01", "02"]
         for ens, items in series.items():
             times = [t for t, _ in items]
-            assert times == [np.datetime64("2026-07-04T12:05:00"),
-                             np.datetime64("2026-07-04T12:10:00")]
+            assert times == [
+                np.datetime64("2026-07-04T12:05:00"),
+                np.datetime64("2026-07-04T12:10:00"),
+            ]
             # value encodes member+step: e.g. member 01, step 05 → 105.0 + cell
-            assert [v for _, v in items] == [float(f"{ens}05") + cell,
-                                             float(f"{ens}10") + cell]
+            assert [v for _, v in items] == [float(f"{ens}05") + cell, float(f"{ens}10") + cell]
 
 
 def test_out_of_bounds_cell_is_dropped_without_hurting_others(synthetic_run):
     paths = sorted(synthetic_run.glob("*.grib2"))
     per_cell = extract.extract_variable(paths, "TOT_PREC", [N_CELLS + 5, 3])
-    assert per_cell[0] == {}                     # out of bounds → empty series
-    assert len(per_cell[1]["01"]) == 2           # neighbour cell unaffected
+    assert per_cell[0] == {}  # out of bounds → empty series
+    assert len(per_cell[1]["01"]) == 2  # neighbour cell unaffected
 
 
 def test_no_matching_files_returns_empty_series_per_cell(tmp_path):
@@ -84,7 +88,7 @@ def test_no_matching_files_returns_empty_series_per_cell(tmp_path):
 def _sample_paths(variable: str, limit: int = 4) -> list[Path]:
     """Pick a handful of real local GRIB files (any run, single ensemble)."""
     local = discover.scan_local_runs()
-    for run_id, by_var in local.items():
+    for _run_id, by_var in local.items():
         files = by_var.get(variable, [])
         # Keep only ensemble "01" to stay fast
         ens01 = [f for f in files if "_e01_" in f.name]
@@ -98,8 +102,7 @@ def _sample_paths(variable: str, limit: int = 4) -> list[Path]:
 _VALID_CELL = 100_000
 
 
-@pytest.mark.skipif(not _sample_paths("TOT_PREC"),
-                    reason="no local TOT_PREC GRIB files available")
+@pytest.mark.skipif(not _sample_paths("TOT_PREC"), reason="no local TOT_PREC GRIB files available")
 def test_extract_tot_prec_returns_values_for_valid_cell():
     paths = _sample_paths("TOT_PREC", limit=4)
     result = extract.extract_variable(paths, "TOT_PREC", [_VALID_CELL])[0]
@@ -109,8 +112,7 @@ def test_extract_tot_prec_returns_values_for_valid_cell():
         assert v >= 0.0
 
 
-@pytest.mark.skipif(not _sample_paths("VMAX_10M"),
-                    reason="no local VMAX_10M GRIB files available")
+@pytest.mark.skipif(not _sample_paths("VMAX_10M"), reason="no local VMAX_10M GRIB files available")
 def test_extract_vmax_returns_values():
     paths = _sample_paths("VMAX_10M", limit=4)
     result = extract.extract_variable(paths, "VMAX_10M", [_VALID_CELL])[0]
@@ -152,6 +154,5 @@ def test_extract_timestamps_land_on_whole_minutes():
     result = extract.extract_variable(paths, "TOT_PREC", [_VALID_CELL])[0]
     times = [t for series in result.values() for t, _ in series]
     assert times, "expected at least one extracted timestamp"
-    off_grid = [str(t) for t in times
-                if int(t.astype("datetime64[s]").astype("int64") % 60) != 0]
+    off_grid = [str(t) for t in times if int(t.astype("datetime64[s]").astype("int64") % 60) != 0]
     assert not off_grid, f"timestamps not on whole-minute boundary: {off_grid}"

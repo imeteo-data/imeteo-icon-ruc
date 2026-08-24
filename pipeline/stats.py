@@ -1,4 +1,5 @@
 """Deaccumulation, percentiles, exceedance probabilities — vectorized."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -6,8 +7,9 @@ import numpy as np
 from . import config
 
 
-def _align_ensembles(series: dict[str, list[tuple[np.datetime64, float]]]
-                     ) -> tuple[np.ndarray, np.ndarray, list[str]]:
+def _align_ensembles(
+    series: dict[str, list[tuple[np.datetime64, float]]],
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
     """Align ensembles on shared timestamps.
 
     Returns (times [T], matrix [E,T], ensemble_ids [E]).
@@ -40,15 +42,17 @@ def _deaccumulate(matrix: np.ndarray, step_minutes: int) -> np.ndarray:
     return diffs * (60.0 / step_minutes)
 
 
-def build_variable_output(series: dict[str, list[tuple[np.datetime64, float]]],
-                          variable: str) -> dict:
+def build_variable_output(
+    series: dict[str, list[tuple[np.datetime64, float]]], variable: str
+) -> dict:
     """Produce the final per-variable JSON block."""
     var_cfg = config.VARIABLES.get(variable) or config.DERIVED_VARIABLES[variable]
-    times, matrix, ens_ids = _align_ensembles(series)
+    times, matrix, _ens_ids = _align_ensembles(series)
     if times.size == 0 or matrix.size == 0:
         return {
             "unit": var_cfg["unit"],
-            "times": [], "ensemble_members": [],
+            "times": [],
+            "ensemble_members": [],
             "percentiles": {f"p{p}": [] for p in config.PERCENTILES},
             "probability_exceeds": {str(t): [] for t in var_cfg["thresholds"]},
         }
@@ -65,10 +69,10 @@ def build_variable_output(series: dict[str, list[tuple[np.datetime64, float]]],
     if offset is not None:
         matrix = matrix + float(offset)
 
-    percentiles = {f"p{p}": np.nanpercentile(matrix, p, axis=0).tolist()
-                   for p in config.PERCENTILES}
-    prob_exceeds = {str(t): ((matrix >= t).mean(axis=0)).tolist()
-                    for t in var_cfg["thresholds"]}
+    percentiles = {
+        f"p{p}": np.nanpercentile(matrix, p, axis=0).tolist() for p in config.PERCENTILES
+    }
+    prob_exceeds = {str(t): ((matrix >= t).mean(axis=0)).tolist() for t in var_cfg["thresholds"]}
 
     return {
         "unit": var_cfg["unit"],

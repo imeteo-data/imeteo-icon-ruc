@@ -53,6 +53,10 @@ data/weather/
 # Local-only: Claude's planning docs, not part of the app
 docs/superpowers/
 
+# Local-only Claude permissions (machine-specific paths/hosts; the shared
+# baseline lives in the tracked .claude/settings.json)
+.claude/settings.local.json
+
 # IDE
 .vscode/
 .idea/

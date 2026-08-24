@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Trim old GRIB files from data/raw/. Either by age or by keeping last N runs."""
+
 from __future__ import annotations
 
 import argparse
-import re
 import time
 from pathlib import Path
 
@@ -12,16 +12,12 @@ from pipeline import config, discover
 
 def _targets_by_age(hours: float) -> list[Path]:
     cutoff = time.time() - hours * 3600
-    return sorted(
-        f for f in config.RAW_DIR.glob("icon_d2_ruc_eps_*")
-        if f.stat().st_mtime < cutoff
-    )
+    return sorted(f for f in config.RAW_DIR.glob("icon_d2_ruc_eps_*") if f.stat().st_mtime < cutoff)
 
 
-def _targets_by_keep_last(keep: int, keep_forecasts: bool
-                          ) -> tuple[list[Path], list[str]]:
+def _targets_by_keep_last(keep: int, keep_forecasts: bool) -> tuple[list[Path], list[str]]:
     """Return (files_to_delete, run_ids_to_delete)."""
-    local = discover.scan_local_runs()   # already sorted newest-first
+    local = discover.scan_local_runs()  # already sorted newest-first
     all_ids = list(local.keys())
     to_keep = set(all_ids[:keep])
     to_delete_ids = [rid for rid in all_ids if rid not in to_keep]
@@ -68,16 +64,24 @@ def main() -> None:
         ),
     )
     g = p.add_mutually_exclusive_group()
-    g.add_argument("--keep-last", type=int, metavar="N",
-                   help="Keep the newest N run_ids, delete everything older")
-    g.add_argument("--hours", type=float, metavar="H",
-                   help="Delete files older than H hours")
-    g.add_argument("--list", action="store_true",
-                   help="List local runs with file counts and sizes")
-    p.add_argument("--keep-forecasts", action="store_true",
-                   help="When using --keep-last, preserve forecast JSONs even for deleted runs")
-    p.add_argument("--dry-run", action="store_true",
-                   help="List files that would be deleted without removing them")
+    g.add_argument(
+        "--keep-last",
+        type=int,
+        metavar="N",
+        help="Keep the newest N run_ids, delete everything older",
+    )
+    g.add_argument("--hours", type=float, metavar="H", help="Delete files older than H hours")
+    g.add_argument("--list", action="store_true", help="List local runs with file counts and sizes")
+    p.add_argument(
+        "--keep-forecasts",
+        action="store_true",
+        help="When using --keep-last, preserve forecast JSONs even for deleted runs",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List files that would be deleted without removing them",
+    )
     args = p.parse_args()
 
     if args.list:

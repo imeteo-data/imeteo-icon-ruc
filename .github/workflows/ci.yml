@@ -37,6 +37,12 @@ jobs:
       - name: Install Python deps
         run: uv sync --group dev
 
+      - name: Lint (ruff)
+        run: uvx ruff check .
+
+      - name: Format check (ruff)
+        run: uvx ruff format --check .
+
       - name: Install Rust toolchain (pinned by extract_rs/rust-toolchain.toml)
         # Plain rustup reads rust-toolchain.toml from the working directory
         # (dtolnay/rust-toolchain does not). RUSTUP_TOOLCHAIN is exported so
