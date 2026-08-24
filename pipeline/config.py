@@ -94,6 +94,16 @@ PERCENTILES = [10, 25, 50, 75, 90]
 # re-downloaded next run. It also bounds how many runs the dashboard shows.
 FORECAST_RETAIN = 12
 
+# Raw GRIBs in data/raw/ are only needed transiently to extract a run —
+# backfill judges completeness from the forecast JSONs, never the GRIBs — so we
+# keep just the newest run and prune the rest after every run. This bounds
+# data/raw on the persistent self-hosted runner (the ephemeral GitHub-hosted
+# runners wiped the workspace each run; the mac-mini does not) so the disk does
+# not fill during a multi-run backfill. Unlike FORECAST_RETAIN this need NOT
+# cover the backfill window; keep it >= 1 so the run being written keeps its
+# inputs through extraction.
+RAW_RETAIN = 1
+
 # DWD sources in priority order. discover.active_source() probes each run
 # index at process start and uses the first that answers with runs, so an
 # outage of the 20-member ensemble (as happened 2026-07-02 → 2026-07-04)

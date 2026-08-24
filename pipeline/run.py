@@ -148,14 +148,42 @@ async def process_run(run_id: str, offline: bool = False) -> list[Path]:
         outputs.append(out_path)
 
     if outputs:
-        _prune_old_runs(config.FORECAST_RETAIN)
+        _prune_old_runs()
         _write_index()
 
     return outputs
 
 
-def _prune_old_runs(keep: int) -> None:
-    """Keep only the newest `keep` run_ids; delete older JSONs + their GRIBs."""
+def _prune_old_runs() -> None:
+    """Bound disk after each run, decoupling the two retention windows.
+
+    Forecast JSONs are kept for the newest `config.FORECAST_RETAIN` runs — that
+    history feeds the dashboard AND backfill's completeness check, which reads
+    the JSONs (never the GRIBs). Raw GRIBs are only needed transiently to
+    extract a run, so they are kept for just the newest `config.RAW_RETAIN`
+    runs; this bounds data/raw on the persistent self-hosted runner without
+    touching the JSON history backfill relies on.
+    """
+    _prune_raw_gribs(config.RAW_RETAIN)
+    _prune_forecast_jsons(config.FORECAST_RETAIN)
+
+
+def _prune_raw_gribs(keep: int) -> None:
+    """Delete GRIBs (and .idx sidecars) for all but the newest `keep` runs."""
+    if keep < 0:
+        return
+    stale = list(discover.scan_local_runs().keys())[keep:]   # newest-first
+    for run_id in stale:
+        for grib in config.RAW_DIR.glob(f"icon_d2_ruc_eps_*_{run_id}_*"):
+            try:
+                grib.unlink()
+            except OSError as e:
+                print(f"  ⚠ failed to remove {grib.name}: {e}")
+        print(f"  ✂ pruned raw GRIBs for old run {run_id}")
+
+
+def _prune_forecast_jsons(keep: int) -> None:
+    """Delete forecast JSONs for all but the newest `keep` runs."""
     if keep <= 0:
         return
     by_run: dict[str, list[Path]] = defaultdict(list)
@@ -164,22 +192,13 @@ def _prune_old_runs(keep: int) -> None:
             continue
         by_run[_stem_to_run_id(p.stem)].append(p)
 
-    sorted_runs = sorted(by_run.keys(), reverse=True)
-    stale = sorted_runs[keep:]
-    if not stale:
-        return
-    for run_id in stale:
-        for grib in config.RAW_DIR.glob(f"icon_d2_ruc_eps_*_{run_id}_*"):
-            try:
-                grib.unlink()
-            except OSError as e:
-                print(f"  ⚠ failed to remove {grib.name}: {e}")
+    for run_id in sorted(by_run.keys(), reverse=True)[keep:]:
         for jp in by_run[run_id]:
             try:
                 jp.unlink()
             except OSError as e:
                 print(f"  ⚠ failed to remove {jp.name}: {e}")
-        print(f"  ✂ pruned old run {run_id}")
+        print(f"  ✂ pruned old forecast run {run_id}")
 
 
 def _write_index() -> None:
