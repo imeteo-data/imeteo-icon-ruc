@@ -1,7 +1,11 @@
 # CLAUDE.md
 
 Agent-operational reference. Purpose, pipeline overview, and quickstart live
-in [README.md](README.md).
+in [README.md](README.md). Standalone satellite with no bucket ties; the
+published feed is GitHub Pages
+(`https://imeteo-data.github.io/imeteo-icon-ruc/data/forecasts/index.json`),
+read by the festival dashboard. Every org host, route and auth mechanism (names only) is in the
+`imeteo-standards:imeteo-endpoints` skill — do not restate them here.
 
 ## Layout
 
@@ -123,9 +127,12 @@ optional `skip_first_step` (drop bogus t=0, see VMAX_10M) and `offset`
   (`.github/workflows/forecast.yml`, cron `*/15 * * * *`, auto-commits
   `data/forecasts/`). Always `git pull` before working, and expect
   `git push` races on `main`.
-- `choose-runner.yml` selects the Actions runner: self-hosted `mac-mini-m2`
-  when online, `ubuntu-latest` otherwise. CI installs `libeccodes-dev` only
-  on Linux — the mac runner must have eccodes installed already.
+- `choose-runner.yml` selects the Actions runner: `vars.RUNNER_LABEL` pins it
+  (`self-hosted` = the org mac-mini, which has eccodes + conda preinstalled);
+  without the var it probes the runner with the `RUNNER_READ_TOKEN` secret
+  and falls back to `ubuntu-latest` (the default `GITHUB_TOKEN` cannot list
+  runners). Org-level routing rules: meta ADR-0007 and the `imeteo-cicd`
+  skill. CI installs `libeccodes-dev` only on Linux.
 - `grib_var` should be the **eccodes shortName** (e.g. `max_i10fg`, `2t`),
   not the xarray cfVarName (`fg10`, `t2m`). Only the Python fallback uses it
   (to pick the data variable); the Rust extension never checks it — files are
