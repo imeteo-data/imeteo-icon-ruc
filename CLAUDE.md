@@ -26,7 +26,7 @@ cleanup.py      standalone GRIB/JSON cleanup (by age or keep-last-N)
 index.html      static uPlot dashboard (served as-is by GitHub Pages)
 tests/          pytest suite
 data/
-  raw/          GRIB downloads (pruned only by cleanup.py / run pruning)
+  raw/          GRIB downloads (deleted only by cleanup.py or pruning of runs older than the newest FORECAST_RETAIN)
   grid/         ICON grid NetCDF + pickled KDTree
   forecasts/    {run_id}_{location_id}.json per run+location, plus index.json
 ```
@@ -59,17 +59,17 @@ uv run maturin develop --release --manifest-path extract_rs/Cargo.toml
 ```
 
 Requires a Rust toolchain (`rustup`) and the eccodes C library (macOS:
-`brew install eccodes`; Debian/Ubuntu: `apt install libeccodes-dev`). If the
-extension isn't importable, `pipeline/extract.py` falls back to xarray/cfgrib
-automatically (it prints which backend it picked at import time).
+`brew install eccodes`; Debian/Ubuntu: `apt install libeccodes-dev`) — without
+eccodes neither backend can decode GRIBs. If the extension isn't importable,
+`pipeline/extract.py` falls back to xarray/cfgrib automatically (it prints
+which backend it picked at import time).
 
 ## Data source
 
 - Source is `icon-d2-ruc-eps` (20-member ensemble), with **automatic
   fallback** to its deterministic sibling `icon-d2-ruc` — same URL/file
-  layout minus the `e/{ens}/` segment — when the ensemble source is down
-  (as during DWD's 2026-07-02 → 2026-07-04 outage). `config.DWD_SOURCES`
-  lists both in priority order; `discover.active_source()` probes each run
+  layout minus the `e/{ens}/` segment — when the ensemble source is down.
+  `config.DWD_SOURCES` lists both in priority order; `discover.active_source()` probes each run
   index once per process and memoizes the first that answers with runs.
   On the fallback, a synthetic single member id (`"00"`) keeps
   `extract.py`/`stats.py`/local filenames unchanged; `percentiles` /
@@ -137,12 +137,6 @@ optional `skip_first_step` (drop bogus t=0, see VMAX_10M) and `offset`
   not the xarray cfVarName (`fg10`, `t2m`). Only the Python fallback uses it
   (to pick the data variable); the Rust extension never checks it — files are
   single-message and pre-filtered by filename.
-- eccodes/cfgrib are native deps: without the eccodes C library neither the
-  Python fallback nor the Rust extension can decode GRIBs.
 - `config.FORECAST_RETAIN` (12) must stay ≥ the workflow's `--runs` backfill
   window and `cleanup.py --keep-last` value, or backfilled runs get pruned
   and re-downloaded every cycle.
-- Files in `data/raw/` are only deleted by `cleanup.py` or the automatic
-  pruning of runs older than the newest `FORECAST_RETAIN`.
-- Fully offline operation: `--offline` uses `data/raw/` only — no DWD
-  discovery, no downloads.
