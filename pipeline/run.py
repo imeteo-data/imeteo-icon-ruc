@@ -174,7 +174,7 @@ def _prune_raw_gribs(keep: int) -> None:
     """Delete GRIBs (and .idx sidecars) for all but the newest `keep` runs."""
     if keep < 0:
         return
-    stale = list(discover.scan_local_runs().keys())[keep:]   # newest-first
+    stale = list(discover.scan_local_runs().keys())[keep:]  # newest-first
     for run_id in stale:
         for grib in config.RAW_DIR.glob(f"icon_d2_ruc_eps_*_{run_id}_*"):
             try:

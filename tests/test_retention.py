@@ -3,14 +3,18 @@ JSONs are kept to config.FORECAST_RETAIN — the two windows are independent so
 data/raw stays bounded on the persistent self-hosted runner without shrinking
 the dashboard history backfill relies on.
 """
+
 from __future__ import annotations
 
 from pipeline import config, discover, run
 
 # 5 runs, ascending; "2026-05-29T1200" is newest.
 RUN_IDS = [
-    "2026-05-29T0800", "2026-05-29T0900", "2026-05-29T1000",
-    "2026-05-29T1100", "2026-05-29T1200",
+    "2026-05-29T0800",
+    "2026-05-29T0900",
+    "2026-05-29T1000",
+    "2026-05-29T1100",
+    "2026-05-29T1200",
 ]
 
 
@@ -60,7 +64,9 @@ def test_raw_pruned_to_one_forecasts_kept(tmp_path, monkeypatch):
     ]
     # Forecasts: the newest 3 runs (all locations) survive independently.
     assert _forecast_runs(fc) == [
-        "2026-05-29T1200", "2026-05-29T1100", "2026-05-29T1000",
+        "2026-05-29T1200",
+        "2026-05-29T1100",
+        "2026-05-29T1000",
     ]
     assert len(list(fc.glob("*.json"))) == 3 * len(config.LOCATIONS)
 
