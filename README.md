@@ -1,6 +1,6 @@
 # ICON-D2-RUC-EPS · Bratislava
 
-Ensemble forecast dashboard for Bratislava (and Pohoda) built on DWD's
+Ensemble forecast dashboard for Bratislava, Pohoda and Uprising built on DWD's
 ICON-D2-RUC-EPS rapid-update-cycle ensemble (20 members). The pipeline downloads
 GRIB2 files, extracts the single grid cell nearest each location, computes ensemble
 percentiles and exceedance probabilities across the members, and writes one
@@ -29,7 +29,8 @@ https://github.com/imeteo-data/meta/blob/main/docs/system-architecture.md
    catalog the dashboard reads.
 
 Variables processed: `TOT_PREC` (5-min precipitation rate, mm/h),
-`VMAX_10M` (hourly max 10 m gust, m/s), `T_2M` (hourly 2 m temperature, °C).
+`VMAX_10M` (hourly max 10 m gust, m/s), `T_2M` (hourly 2 m temperature, °C),
+`WIND_10M` (sustained 10 m wind speed, m/s, derived from U_10M + V_10M).
 
 ## Automation
 
