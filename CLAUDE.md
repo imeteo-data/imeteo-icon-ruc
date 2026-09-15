@@ -11,7 +11,7 @@ read by the festival dashboard. Every org host, route and auth mechanism (names 
 
 ```
 pipeline/
-  config.py     LOCATIONS, VARIABLES, PERCENTILES, DWD_SOURCES, retention
+  config.py     LOCATIONS, VARIABLES, DERIVED_VARIABLES, PERCENTILES, DWD_SOURCES, retention (FORECAST_RETAIN, RAW_RETAIN)
   discover.py   DWD source resolution + run discovery, URL/filename helpers
   download.py   async aiohttp downloader, skips files already cached
   grid.py       ICON grid loader + KDTree index (pickled to data/grid/)
@@ -26,7 +26,7 @@ cleanup.py      standalone GRIB/JSON cleanup (by age or keep-last-N)
 index.html      static uPlot dashboard (served as-is by GitHub Pages)
 tests/          pytest suite
 data/
-  raw/          GRIB downloads (deleted only by cleanup.py or pruning of runs older than the newest FORECAST_RETAIN)
+  raw/          GRIB downloads (deleted only by cleanup.py or pruning of runs older than the newest RAW_RETAIN)
   grid/         ICON grid NetCDF + pickled KDTree
   forecasts/    {run_id}_{location_id}.json per run+location, plus index.json
 ```
@@ -108,7 +108,8 @@ back to it). `data/forecasts/index.json` is the static catalog
       "probability_exceeds": {"0.1": [...], "1.0": [...], "5.0": [...], "10.0": [...]}
     },
     "VMAX_10M": { "...": "same shape, m/s" },
-    "T_2M": { "...": "same shape, °C" }
+    "T_2M": { "...": "same shape, °C" },
+    "WIND_10M": { "...": "same shape, m/s" }
   }
 }
 ```
@@ -118,8 +119,11 @@ back to it). `data/forecasts/index.json` is the static catalog
 Both are single dict entries in `pipeline/config.py` (`VARIABLES` /
 `LOCATIONS`); the rest of the pipeline handles them. Variable options:
 `grib_var`, `is_accumulated`, `step_minutes`, `unit`, `thresholds`, plus
-optional `skip_first_step` (drop bogus t=0, see VMAX_10M) and `offset`
-(unit shift, see T_2M's Kelvin→Celsius).
+optional `skip_first_step` (drop bogus t=0, see VMAX_10M), `offset`
+(unit shift, see T_2M's Kelvin→Celsius), and `internal` (bool, suppresses
+JSON output; see U_10M/V_10M). Derived variables (e.g. `WIND_10M`, computed
+from other variables per ensemble member) go in `DERIVED_VARIABLES`, not
+`VARIABLES`.
 
 ## Gotchas
 
