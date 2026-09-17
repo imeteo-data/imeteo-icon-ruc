@@ -1,6 +1,6 @@
 # ICON-D2-RUC-EPS · Bratislava
 
-Ensemble forecast dashboard for Bratislava, Pohoda and Uprising built on DWD's
+Ensemble forecast dashboard for Bratislava and Most SNP built on DWD's
 ICON-D2-RUC-EPS rapid-update-cycle ensemble (20 members). The pipeline downloads
 GRIB2 files, extracts the single grid cell nearest each location, computes ensemble
 percentiles and exceedance probabilities across the members, and writes one
