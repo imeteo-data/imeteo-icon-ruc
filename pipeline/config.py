@@ -12,15 +12,10 @@ LOCATIONS = {
         "lat": 48.162891146409,
         "lon": 17.136906864798476,
     },
-    "pohoda": {
-        "name": "Pohoda",
-        "lat": 48.8654,
-        "lon": 17.9997,
-    },
-    "uprising": {
-        "name": "Uprising — Zlaté piesky",
-        "lat": 48.186,
-        "lon": 17.187,
+    "most_snp": {
+        "name": "Most SNP",
+        "lat": 48.138280719767494,
+        "lon": 17.104511723569182,
     },
 }
 
