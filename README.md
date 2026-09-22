@@ -8,8 +8,8 @@ JSON per run and location. A static HTML/uPlot dashboard renders them.
 
 **Live dashboard:** https://imeteo-data.github.io/imeteo-icon-ruc/
 
-**Where this fits:** Standalone satellite of the imeteo-data org — no shared
-data flows; org registry:
+**Where this fits:** Standalone satellite of the imeteo-data org — no bucket
+ties; org registry:
 https://github.com/imeteo-data/meta/blob/main/docs/system-architecture.md
 
 ## How it works
