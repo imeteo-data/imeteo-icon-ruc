@@ -24,6 +24,7 @@ main.py         CLI entry point
 api.py          Flask API + local dashboard server
 cleanup.py      standalone GRIB/JSON cleanup (by age or keep-last-N)
 index.html      static uPlot dashboard (served as-is by GitHub Pages)
+scripts/       lint_pr.py — PR title/body check run by PR Lint (SCOPES/DEPLOYS)
 tests/          pytest suite
 data/
   raw/          GRIB downloads (deleted only by cleanup.py or pruning of runs older than the newest RAW_RETAIN)

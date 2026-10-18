@@ -57,6 +57,10 @@ every 2 hours it fails (red X + `::error`) when `generated_at` in the
 committed `data/forecasts/index.json` is older than 2 hours — both the Mini
 loop and the cron fallback have stopped producing.
 
+`.github/workflows/pr-lint.yml` (PR Lint) checks every PR title and body
+against `.github/pull_request_template.md` (org release-flow format, allowed
+scopes/deploys in `scripts/lint_pr.py`); squash merges carry both into `main`.
+
 ## Quickstart
 
 Needs Python ≥3.12, [uv](https://docs.astral.sh/uv/), and the eccodes C
