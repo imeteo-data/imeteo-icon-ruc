@@ -1,6 +1,6 @@
 <!-- BEGIN RELEASE-METADATA -->
 **Type:** <!-- feat | fix | refactor | perf | chore | ci | docs -->
-**Scope:** <!-- dashboard | extract | forecast | freshness | pipeline | release | retention | ci | deps | docs | none -->
+**Scope:** <!-- dashboard | extract | forecast | freshness | pipeline | retention | ci | deps | docs | none -->
 **User-facing:** <!-- yes | no -->
 **Deploy:** <!-- none | pages-dispatch | runner-host -->
 **Breaking:** <!-- no | <one-line description of the break> -->
