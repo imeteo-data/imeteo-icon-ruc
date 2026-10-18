@@ -16,7 +16,6 @@ SCOPES = {
     "forecast",
     "freshness",
     "pipeline",
-    "release",
     "retention",
     "ci",
     "deps",
