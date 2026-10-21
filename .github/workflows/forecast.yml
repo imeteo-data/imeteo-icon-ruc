@@ -2,10 +2,9 @@ name: Forecast & Deploy
 
 on:
   schedule:
-    # Every 15 min. GitHub delays/drops scheduled runs under load, so firing
-    # often + backfilling (below) keeps gaps small. A fire that finds nothing
-    # new is cheap: completeness checks only, no commit, no deploy.
-    - cron: "*/15 * * * *"
+    # Every 3 h at :30, ~1.5 h after each 3-hourly DWD run (00, 03, ...) starts,
+    # so that run is fully uploaded. Backfill recovers a dropped fire.
+    - cron: "30 1-23/3 * * *"
   workflow_dispatch:
     inputs:
       runs:

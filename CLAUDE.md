@@ -129,8 +129,8 @@ from other variables per ensemble member) go in `DERIVED_VARIABLES`, not
 
 ## Gotchas
 
-- **The scheduled workflow commits to `main` every 15 minutes**
-  (`.github/workflows/forecast.yml`, cron `*/15 * * * *`, auto-commits
+- **The scheduled workflow commits to `main` every 3 hours**
+  (`.github/workflows/forecast.yml`, cron `30 1-23/3 * * *`, auto-commits
   `data/forecasts/`). Always `git pull` before working, and expect
   `git push` races on `main`.
 - `choose-runner.yml` selects the Actions runner: `vars.RUNNER_LABEL` pins it
@@ -146,7 +146,7 @@ from other variables per ensemble member) go in `DERIVED_VARIABLES`, not
 - `RUN_INTERVAL_HOURS` filters `discover.list_remote_runs`, so `--runs 12`
   spans 36 h. Lowering it later leaves off-grid JSONs that count toward
   `FORECAST_RETAIN` and cause prune/re-download thrash — delete them in the
-  same change. The freshness alarm threshold must exceed the interval.
+  same change.
 - `config.FORECAST_RETAIN` (12) must stay ≥ the workflow's `--runs` backfill
   window and `cleanup.py --keep-last` value, or backfilled runs get pruned
   and re-downloaded every cycle.

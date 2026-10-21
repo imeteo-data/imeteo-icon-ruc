@@ -37,10 +37,10 @@ Variables processed: `TOT_PREC` (5-min precipitation rate, mm/h),
 `.github/workflows/forecast.yml` is triggered two ways:
 
 - **Primary — external dispatch loop.** A LaunchAgent on the owner's
-  always-on Mac Mini runs `gh workflow run forecast.yml` at **:15 and :45**
-  every hour (setup captured in
+  always-on Mac Mini runs `gh workflow run forecast.yml` at **:30 every 3rd
+  hour (01, 04, ...)** (setup captured in
   [PR #1](https://github.com/imeteo-data/imeteo-icon-ruc/pull/1)).
-- **Fallback — GitHub `*/15` cron.** GitHub heavily throttles scheduled
+- **Fallback — GitHub 3-hourly cron.** GitHub heavily throttles scheduled
   runs on this repo (observed ~4 fires in 13 h against the 52 requested),
   so it only papers over Mini outages with hours-scale gaps.
 
@@ -51,11 +51,6 @@ back to `main`. When forecasts changed, a second job deploys the repo root to
 GitHub Pages via `actions/deploy-pages`. `choose-runner.yml` runs the job on
 the self-hosted `mac-mini-m2` runner when it is online, `ubuntu-latest`
 otherwise.
-
-`.github/workflows/freshness.yml` is the alarm for the whole trigger stack:
-every 2 hours it fails (red X + `::error`) when `generated_at` in the
-committed `data/forecasts/index.json` is older than 2 hours — both the Mini
-loop and the cron fallback have stopped producing.
 
 `.github/workflows/pr-lint.yml` (PR Lint) checks every PR title and body
 against `.github/pull_request_template.md` (org release-flow format, allowed
