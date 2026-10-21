@@ -127,6 +127,7 @@ def test_deterministic_source_reports_synthetic_member(monkeypatch):
 
 
 def test_list_remote_runs_uses_active_source(monkeypatch):
+    monkeypatch.setattr(config, "RUN_INTERVAL_HOURS", 1)
     monkeypatch.setattr(
         requests,
         "get",
@@ -138,3 +139,13 @@ def test_list_remote_runs_uses_active_source(monkeypatch):
         ),
     )
     assert discover.list_remote_runs(limit=5) == ["2026-07-04T1400"]
+
+
+def test_list_remote_runs_keeps_only_interval_hours(monkeypatch):
+    monkeypatch.setattr(discover, "active_source", lambda: {})
+    monkeypatch.setattr(
+        discover,
+        "_list_runs",
+        lambda source, variable: ["2026-07-04T1400", "2026-07-04T1200", "2026-07-04T1100", "2026-07-04T0900"],
+    )
+    assert discover.list_remote_runs() == ["2026-07-04T1200", "2026-07-04T0900"]

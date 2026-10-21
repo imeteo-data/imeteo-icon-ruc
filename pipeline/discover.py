@@ -97,8 +97,15 @@ def build_url(variable: str, run_id: str, ensemble: str, step: str) -> str:
 
 
 def list_remote_runs(variable: str = "TOT_PREC", limit: int | None = None) -> list[str]:
-    """Fetch DWD index for variable, return run_ids newest first."""
-    ids = _list_runs(active_source(), variable)
+    """Fetch DWD index for variable, return run_ids newest first.
+
+    Only runs on the config.RUN_INTERVAL_HOURS grid are returned.
+    """
+    ids = [
+        r
+        for r in _list_runs(active_source(), variable)
+        if int(r[11:13]) % config.RUN_INTERVAL_HOURS == 0
+    ]
     return ids[:limit] if limit else ids
 
 
