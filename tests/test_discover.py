@@ -149,3 +149,4 @@ def test_list_remote_runs_keeps_only_interval_hours(monkeypatch):
         lambda source, variable: ["2026-07-04T1400", "2026-07-04T1200", "2026-07-04T1100", "2026-07-04T0900"],
     )
     assert discover.list_remote_runs() == ["2026-07-04T1200", "2026-07-04T0900"]
+    assert discover.list_remote_runs(limit=1) == ["2026-07-04T1200"]

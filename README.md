@@ -44,7 +44,7 @@ Variables processed: `TOT_PREC` (5-min precipitation rate, mm/h),
   runs on this repo (observed ~4 fires in 13 h against the 52 requested),
   so it only papers over Mini outages with hours-scale gaps.
 
-Each fire backfills the 12 most recent runs
+Each fire backfills the 12 most recent runs on the 3-hourly grid (UTC hours divisible by 3)
 (`main.py --runs 12 --backfill` — already-complete runs are skipped, so a
 no-op fire is cheap), trims to the newest 12 runs, and commits changed JSONs
 back to `main`. When forecasts changed, a second job deploys the repo root to

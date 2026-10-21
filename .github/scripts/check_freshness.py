@@ -12,7 +12,9 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-MAX_AGE_HOURS = 2.0
+# Runs are processed every config.RUN_INTERVAL_HOURS (3) h, so output pauses
+# ~3 h between a run's last re-process and the next run's first; 5 = that + lag.
+MAX_AGE_HOURS = 5.0
 
 INDEX = Path(__file__).resolve().parents[2] / "data" / "forecasts" / "index.json"
 
