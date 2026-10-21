@@ -78,7 +78,8 @@ which backend it picked at import time).
   shows a SINGLE-MEMBER badge (data-driven off `ensemble_members` length).
 - File URLs: `{base}/{VAR}/r/{run}/e/{ens}/s/{step}.grib2` under the
   ensemble source; the deterministic fallback drops the `/e/{ens}` segment.
-- 20 members per run (ids `01`–`20`, listed dynamically); hourly model runs,
+- 20 members per run (ids `01`–`20`, listed dynamically); hourly model runs of which only every
+  `RUN_INTERVAL_HOURS`-th (3 → UTC hours 00, 03, …) is processed,
   ~27h horizon. A run is treated as fully uploaded once its horizon reaches
   `EXPECTED_FORECAST_MINUTES` (800).
 - DWD URLs encode the run time as `YYYY-MM-DDTHH%3A00`; local filenames use
@@ -128,8 +129,8 @@ from other variables per ensemble member) go in `DERIVED_VARIABLES`, not
 
 ## Gotchas
 
-- **The scheduled workflow commits to `main` every 15 minutes**
-  (`.github/workflows/forecast.yml`, cron `*/15 * * * *`, auto-commits
+- **The scheduled workflow commits to `main` every 3 hours**
+  (`.github/workflows/forecast.yml`, cron `30 1-23/3 * * *`, auto-commits
   `data/forecasts/`). Always `git pull` before working, and expect
   `git push` races on `main`.
 - `choose-runner.yml` selects the Actions runner: `vars.RUNNER_LABEL` pins it
@@ -142,6 +143,10 @@ from other variables per ensemble member) go in `DERIVED_VARIABLES`, not
   not the xarray cfVarName (`fg10`, `t2m`). Only the Python fallback uses it
   (to pick the data variable); the Rust extension never checks it — files are
   single-message and pre-filtered by filename.
+- `RUN_INTERVAL_HOURS` filters `discover.list_remote_runs`, so `--runs 12`
+  spans 36 h. Lowering it later leaves off-grid JSONs that count toward
+  `FORECAST_RETAIN` and cause prune/re-download thrash — delete them in the
+  same change.
 - `config.FORECAST_RETAIN` (12) must stay ≥ the workflow's `--runs` backfill
   window and `cleanup.py --keep-last` value, or backfilled runs get pruned
   and re-downloaded every cycle.

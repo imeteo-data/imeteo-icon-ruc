@@ -82,6 +82,11 @@ DERIVED_VARIABLES = {
 
 PERCENTILES = [10, 25, 50, 75, 90]
 
+# Process only every Nth hourly DWD run (UTC hour % N == 0). Cuts download
+# volume ~N-fold; trigger frequency and --runs backfill are unaffected because
+# discovery filters the run list.
+RUN_INTERVAL_HOURS = 3
+
 # Retain only the newest N forecast JSONs in data/forecasts/. Older files
 # (and their GRIB inputs in data/raw/) are pruned after each run. This must
 # stay >= the backfill window the workflow requests (main.py --runs N --backfill)
