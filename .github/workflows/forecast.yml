@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      force_deploy:
+        description: "Deploy Pages even if the forecast data did not change"
+        required: false
+        type: boolean
+        default: false
 
 # Least privilege at workflow level; each job escalates to only what it needs
 # (forecast commits data → contents: write; deploy publishes Pages →
@@ -33,12 +38,8 @@ permissions:
 # groups keep a stuck deploy from ever blocking the data pipeline again.
 
 jobs:
-  choose-runner:
-    uses: ./.github/workflows/choose-runner.yml
-
   forecast:
-    needs: choose-runner
-    runs-on: ${{ needs.choose-runner.outputs.runner }}
+    runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
     # Serialize data refresh against itself: concurrent runs would race on the
     # same commit/push to main. Never cancel-in-progress — a mid-flight
     # forecast holds downloaded GRIBs and is close to committing.
@@ -141,10 +142,10 @@ jobs:
 
   deploy:
     needs: forecast
-    # Only rebuild Pages when forecasts actually changed, so the frequent cron
-    # doesn't trigger a deploy on every fire — but a manual run (workflow_dispatch)
-    # always deploys, so site/code changes can be pushed live on demand.
-    if: needs.forecast.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+    # Only rebuild Pages when forecasts actually changed. The mini dispatches
+    # this workflow every 30 min with no inputs, so a plain dispatch must not
+    # deploy; set force_deploy=true to push site/code changes live on demand.
+    if: needs.forecast.outputs.changed == 'true' || inputs.force_deploy
     runs-on: ubuntu-latest
     # Publishing is last-one-wins: the job always deploys the current tip of
     # main, so a newer deploy fully supersedes an older one and cancelling a

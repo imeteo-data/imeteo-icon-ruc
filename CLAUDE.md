@@ -133,12 +133,13 @@ from other variables per ensemble member) go in `DERIVED_VARIABLES`, not
   (`.github/workflows/forecast.yml`, cron `30 1-23/3 * * *`, auto-commits
   `data/forecasts/`). Always `git pull` before working, and expect
   `git push` races on `main`.
-- `choose-runner.yml` selects the Actions runner: `vars.RUNNER_LABEL` pins it
-  (`self-hosted` = the org mac-mini, which has eccodes + conda preinstalled);
-  without the var it probes the runner with the `RUNNER_READ_TOKEN` secret
-  and falls back to `ubuntu-latest` (the default `GITHUB_TOKEN` cannot list
-  runners). Org-level routing rules: meta ADR-0007 and the `imeteo-cicd`
-  skill. CI installs `libeccodes-dev` only on Linux.
+- The forecast job runs on `vars.RUNNER_LABEL || 'self-hosted'` (the
+  repo-registered mac-mini, which has eccodes + conda preinstalled); PR jobs
+  stay on `ubuntu-latest` so fork PRs never reach the mini. Pages deploys only
+  when forecasts changed or a dispatch sets `force_deploy=true` (the mini
+  dispatches with no inputs at :15/:45). Org routing rules: meta ADR-0007 /
+  ADR-0011 and the `imeteo-cicd` skill. CI installs `libeccodes-dev` only on
+  Linux.
 - `grib_var` should be the **eccodes shortName** (e.g. `max_i10fg`, `2t`),
   not the xarray cfVarName (`fg10`, `t2m`). Only the Python fallback uses it
   (to pick the data variable); the Rust extension never checks it — files are

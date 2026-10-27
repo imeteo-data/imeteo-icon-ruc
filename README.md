@@ -47,10 +47,10 @@ Variables processed: `TOT_PREC` (5-min precipitation rate, mm/h),
 Each fire backfills the 12 most recent runs on the 3-hourly grid (UTC hours divisible by 3)
 (`main.py --runs 12 --backfill` — already-complete runs are skipped, so a
 no-op fire is cheap), trims to the newest 12 runs, and commits changed JSONs
-back to `main`. When forecasts changed, a second job deploys the repo root to
-GitHub Pages via `actions/deploy-pages`. `choose-runner.yml` runs the job on
-the self-hosted `mac-mini-m2` runner when it is online, `ubuntu-latest`
-otherwise.
+back to `main`. The forecast job runs on `vars.RUNNER_LABEL || 'self-hosted'`
+(the `mac-mini-m2` runner). A second job deploys the repo root to GitHub Pages
+via `actions/deploy-pages` only when forecasts changed or a dispatch sets
+`force_deploy=true`.
 
 `.github/workflows/pr-lint.yml` (PR Lint) checks every PR title and body
 against `.github/pull_request_template.md` (org release-flow format, allowed
