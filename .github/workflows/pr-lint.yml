@@ -19,8 +19,8 @@ concurrency:
 jobs:
   lint:
     if: github.event.pull_request.user.type != 'Bot'
-    # Public repo: PR jobs stay hosted (meta ADR-0007), never choose-runner,
-    # which vars.RUNNER_LABEL routes to the self-hosted mac-mini.
+    # Public repo: PR jobs stay hosted (meta ADR-0007). RUNNER_LABEL=self-hosted
+    # would send fork PRs to the mac-mini.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
