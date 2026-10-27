@@ -135,10 +135,9 @@ from other variables per ensemble member) go in `DERIVED_VARIABLES`, not
   `git push` races on `main`.
 - The forecast job runs on `vars.RUNNER_LABEL || 'self-hosted'` (the
   repo-registered mac-mini, which has eccodes + conda preinstalled); PR jobs
-  stay on `ubuntu-latest` so fork PRs never reach the mini. Pages deploys only
-  when forecasts changed or a dispatch sets `force_deploy=true` (the mini
-  dispatches with no inputs at :15/:45). Org routing rules: meta ADR-0007 /
-  ADR-0011 and the `imeteo-cicd` skill. CI installs `libeccodes-dev` only on
+  stay on `ubuntu-latest` so fork PRs never reach the mini. Pages deploy gate:
+  README. Org routing rules: meta ADR-0007 / ADR-0011 and the `imeteo-cicd`
+  skill. CI installs `libeccodes-dev` only on
   Linux.
 - `grib_var` should be the **eccodes shortName** (e.g. `max_i10fg`, `2t`),
   not the xarray cfVarName (`fg10`, `t2m`). Only the Python fallback uses it

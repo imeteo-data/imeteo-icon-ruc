@@ -50,7 +50,7 @@ no-op fire is cheap), trims to the newest 12 runs, and commits changed JSONs
 back to `main`. The forecast job runs on `vars.RUNNER_LABEL || 'self-hosted'`
 (the `mac-mini-m2` runner). A second job deploys the repo root to GitHub Pages
 via `actions/deploy-pages` only when forecasts changed or a dispatch sets
-`force_deploy=true`.
+`force_deploy=true` (the mini dispatches with no inputs at :15/:45).
 
 `.github/workflows/pr-lint.yml` (PR Lint) checks every PR title and body
 against `.github/pull_request_template.md` (org release-flow format, allowed
