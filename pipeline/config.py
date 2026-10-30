@@ -123,8 +123,6 @@ DWD_SOURCES = (
         "has_ensemble": False,
     },
 )
-GRID_URL = "https://opendata.dwd.de/weather/lib/cdo/icon_grid_0047_R19B07_L.nc.bz2"
-GRID_FILE = GRID_DIR / "icon_grid_0047_R19B07_L.nc"
 KDTREE_CACHE = GRID_DIR / "kdtree.pkl"
 
 MAX_CONCURRENT_DOWNLOADS = 20
