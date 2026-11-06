@@ -2,5 +2,18 @@
   "extraKnownMarketplaces": {
     "imeteo": { "source": { "source": "github", "repo": "imeteo-data/meta" } }
   },
-  "enabledPlugins": { "imeteo-standards@imeteo": true }
+  "enabledPlugins": { "imeteo-standards@imeteo": true },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'd=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0; h=\"$(cd \"$d/..\" 2>/dev/null && pwd)/.claude/hooks/ruff-on-edit.sh\"; [ -x \"$h\" ] || exit 0; exec \"$h\"'"
+          }
+        ]
+      }
+    ]
+  }
 }
