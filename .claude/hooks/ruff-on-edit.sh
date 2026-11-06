@@ -35,7 +35,8 @@ esac
 [ -f "$file_path" ] || exit 0
 
 # Run ruff from the repo root (owns pyproject.toml); CI uses `uvx ruff`.
-cd "$(dirname "$file_path")" && cd "$(git rev-parse --show-toplevel)" || exit 0
+top=$(git -C "$(dirname "$file_path")" rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$top" || exit 0
 ruff_cmd=(uvx ruff)
 fix_output="$("${ruff_cmd[@]}" check --fix --force-exclude "$file_path" 2>&1)"
 fix_rc=$?
